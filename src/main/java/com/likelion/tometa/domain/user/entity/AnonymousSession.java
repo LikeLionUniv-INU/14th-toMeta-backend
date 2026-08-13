@@ -51,6 +51,6 @@ public class AnonymousSession extends BaseCreatedEntity {
     }
 
     public boolean isExpired(LocalDateTime now) {
-        return expiresAt.isBefore(now);
+        return !expiresAt.isAfter(now);
     }
 }

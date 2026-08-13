@@ -56,7 +56,8 @@ public class User extends BaseTimeEntity {
         this.ageGroup = ageGroup;
         this.skinType = skinType;
         this.allowNotification = allowNotification;
-        this.notificationTime = notificationTime;
+        this.notificationTime =
+                allowNotification ? notificationTime : null;
     }
 
     public void completeProfile(
