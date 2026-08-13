@@ -16,3 +16,8 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
+
+app:
+  anonymous-session:
+    expiration-days: 60
+    cookie-secure: ${COOKIE_SECURE:false}
