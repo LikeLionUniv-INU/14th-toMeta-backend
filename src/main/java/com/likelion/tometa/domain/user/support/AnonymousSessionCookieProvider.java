@@ -16,10 +16,12 @@ public class AnonymousSessionCookieProvider {
     private final AnonymousSessionProperties properties;
 
     public ResponseCookie create(String token) {
+        boolean secure = properties.cookieSecure();
+
         return ResponseCookie.from(COOKIE_NAME, token)
                 .httpOnly(true)
-                .secure(properties.cookieSecure())
-                .sameSite("None")
+                .secure(secure)
+                .sameSite(secure ? "None" : "Lax")
                 .path("/")
                 .maxAge(Duration.ofDays(properties.expirationDays()))
                 .build();
