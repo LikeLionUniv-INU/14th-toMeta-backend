@@ -1,6 +1,7 @@
 package com.likelion.tometa.domain.onboarding.controller;
 
 import com.likelion.tometa.domain.onboarding.dto.request.ConsentRequestDto;
+import com.likelion.tometa.domain.onboarding.dto.response.OnboardingStatusResponseDto;
 import com.likelion.tometa.domain.onboarding.service.result.ConsentResult;
 import com.likelion.tometa.domain.onboarding.service.OnboardingService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
@@ -22,8 +23,7 @@ public class OnboardingController {
     @PostMapping("/consents")
     public ResponseEntity<ApiResponse<Void>> agreeToConsents(
             @Valid @RequestBody ConsentRequestDto request,
-            @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false)
-            String sessionToken
+            @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false) String sessionToken
     ) {
         ConsentResult result = onboardingService.agreeToConsents(request, sessionToken);
 
@@ -36,5 +36,14 @@ public class OnboardingController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie)
                 .body(ApiResponse.success());
+    }
+
+    @GetMapping("/status")
+    public ResponseEntity<ApiResponse<OnboardingStatusResponseDto>> getOnboardingStatus(
+            @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false) String sessionToken
+    ) {
+        OnboardingStatusResponseDto result = onboardingService.getOnboardingStatus(sessionToken);
+
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 }
