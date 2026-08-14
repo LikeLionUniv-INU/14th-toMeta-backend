@@ -1,9 +1,12 @@
 package com.likelion.tometa.domain.onboarding.service;
 
+import com.likelion.tometa.domain.health.repository.HealthConnectionRepository;
 import com.likelion.tometa.domain.onboarding.code.OnboardingErrorCode;
 import com.likelion.tometa.domain.onboarding.constant.ConsentPolicy;
 import com.likelion.tometa.domain.onboarding.dto.request.ConsentRequestDto;
+import com.likelion.tometa.domain.onboarding.dto.response.OnboardingStatusResponseDto;
 import com.likelion.tometa.domain.onboarding.service.result.ConsentResult;
+import com.likelion.tometa.domain.user.code.UserErrorCode;
 import com.likelion.tometa.domain.user.entity.AnonymousSession;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.entity.UserConsent;
@@ -27,6 +30,7 @@ public class OnboardingService {
     private final UserRepository userRepository;
     private final UserConsentRepository userConsentRepository;
     private final AnonymousSessionRepository anonymousSessionRepository;
+    private final HealthConnectionRepository healthConnectionRepository;
     private final AnonymousSessionTokenProvider tokenProvider;
     private final AnonymousSessionProperties sessionProperties;
 
@@ -46,6 +50,23 @@ public class OnboardingService {
         }
 
         return createNewAnonymousUser();
+    }
+
+    @Transactional
+    public OnboardingStatusResponseDto getOnboardingStatus(String sessionToken) {
+        AnonymousSession session = findValidSession(sessionToken)
+                .orElseThrow(() -> new GeneralException(UserErrorCode.INVALID_ANONYMOUS_SESSION));
+
+        User user = session.getUser();
+
+        boolean profileCompleted = user.getProfileCompletedAt() != null;
+
+        boolean healthConnectLinked = healthConnectionRepository
+                .existsByUser_IdAndRevokedAtIsNull(user.getId());
+
+        session.touch();
+
+        return new OnboardingStatusResponseDto(profileCompleted, healthConnectLinked);
     }
 
     private void validateRequiredConsents(ConsentRequestDto request) {
