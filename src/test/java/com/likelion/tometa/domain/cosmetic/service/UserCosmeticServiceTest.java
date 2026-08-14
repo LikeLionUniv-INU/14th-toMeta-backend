@@ -65,7 +65,6 @@ class UserCosmeticServiceTest {
     @Test
     void createManualCosmetic_savesProductIngredientsAndUserCosmetic() {
         ManualCosmeticCreateRequest request = new ManualCosmeticCreateRequest(
-                "morning",
                 "내가 쓰는 진정 세럼",
                 "serum",
                 List.of("히알루론산", "나이아신아마이드", "판테놀")
@@ -120,13 +119,12 @@ class UserCosmeticServiceTest {
         assertSame(user, capturedUserCosmetic.getUser());
         assertSame(savedProduct, capturedUserCosmetic.getCosmeticProduct());
         assertNull(capturedUserCosmetic.getCustomName());
-        assertEquals("morning", capturedUserCosmetic.getUsageTime());
+        assertNull(capturedUserCosmetic.getUsageTime());
     }
 
     @Test
     void createManualCosmetic_rejectsMoreThanFiveMainIngredients() {
         ManualCosmeticCreateRequest request = new ManualCosmeticCreateRequest(
-                "morning",
                 "제품명",
                 "serum",
                 List.of("1", "2", "3", "4", "5", "6")
@@ -147,32 +145,8 @@ class UserCosmeticServiceTest {
     }
 
     @Test
-    void createManualCosmetic_rejectsUnsupportedUsageTime() {
-        ManualCosmeticCreateRequest request = new ManualCosmeticCreateRequest(
-                "afternoon",
-                "제품명",
-                "serum",
-                List.of()
-        );
-        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
-
-        GeneralException exception = assertThrows(
-                GeneralException.class,
-                () -> userCosmeticService.createManualCosmetic(request, SESSION_TOKEN)
-        );
-
-        assertSame(GlobalErrorCode.BAD_REQUEST, exception.getErrorCode());
-        verifyNoInteractions(
-                cosmeticProductRepository,
-                cosmeticIngredientRepository,
-                userCosmeticRepository
-        );
-    }
-
-    @Test
     void createManualCosmetic_rejectsUnsupportedProductType() {
         ManualCosmeticCreateRequest request = new ManualCosmeticCreateRequest(
-                "both",
                 "제품명",
                 "cleanser",
                 List.of()

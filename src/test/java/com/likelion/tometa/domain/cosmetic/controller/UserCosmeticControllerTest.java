@@ -53,7 +53,6 @@ class UserCosmeticControllerTest {
                         .cookie(new Cookie("anonymous_session", "session-token"))
                         .content("""
                                 {
-                                  "usageTime": "morning",
                                   "productName": "내가 쓰는 진정 세럼",
                                   "productType": "serum",
                                   "mainIngredients": ["히알루론산", "나이아신아마이드", "판테놀"]
@@ -80,7 +79,6 @@ class UserCosmeticControllerTest {
                         .cookie(new Cookie("anonymous_session", "session-token"))
                         .content("""
                                 {
-                                  "usageTime": "morning",
                                   "productName": "제품명",
                                   "productType": "serum",
                                   "mainIngredients": ["히알루론산", "판테놀"]
@@ -104,7 +102,6 @@ class UserCosmeticControllerTest {
                         .cookie(new Cookie("anonymous_session", "session-token"))
                         .content("""
                                 {
-                                  "usageTime": "morning",
                                   "productName": "제품명",
                                   "productType": "serum",
                                   "mainIngredients": ["히알루론산", "   ", "판테놀"]
@@ -155,7 +152,6 @@ class UserCosmeticControllerTest {
                         .cookie(new Cookie("anonymous_session", "session-token"))
                         .content("""
                                 {
-                                  "usageTime": "morning",
                                   "productName": "제품명",
                                   "productType": "serum",
                                   "mainIngredients": ["1", "2", "3", "4", "5", "6"]
@@ -175,7 +171,6 @@ class UserCosmeticControllerTest {
     private String validRequestBody() {
         return """
                 {
-                  "usageTime": "morning",
                   "productName": "제품명",
                   "productType": "serum",
                   "mainIngredients": ["히알루론산", "나이아신아마이드", "판테놀"]

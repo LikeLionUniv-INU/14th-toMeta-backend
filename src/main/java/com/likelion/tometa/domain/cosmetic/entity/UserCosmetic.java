@@ -38,7 +38,7 @@ public class UserCosmetic extends BaseTimeEntity {
     @Column(name = "custom_name", length = 100)
     private String customName;
 
-    @Column(name = "usage_time", nullable = false, length = 20)
+    @Column(name = "usage_time", length = 20)
     private String usageTime;
 
     @Column(name = "deleted_at")

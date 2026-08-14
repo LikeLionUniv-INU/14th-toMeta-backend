@@ -7,9 +7,6 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record ManualCosmeticCreateRequest(
-        @NotBlank(message = "사용 시간대는 필수입니다.")
-        String usageTime,
-
         @NotBlank(message = "제품명은 필수입니다.")
         @Size(max = 255, message = "제품명은 255자 이하여야 합니다.")
         String productName,

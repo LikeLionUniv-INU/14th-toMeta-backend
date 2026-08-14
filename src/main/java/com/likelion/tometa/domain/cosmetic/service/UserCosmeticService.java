@@ -7,7 +7,6 @@ import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
 import com.likelion.tometa.domain.cosmetic.enums.ProductType;
-import com.likelion.tometa.domain.cosmetic.enums.UsageTime;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticIngredientRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticProductRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
@@ -42,7 +41,6 @@ public class UserCosmeticService {
         User user = sessionUserResolver.resolve(sessionToken);
 
         validateMainIngredientCount(request.mainIngredients());
-        validateUsageTime(request.usageTime());
         validateProductType(request.productType());
 
         CosmeticProduct cosmeticProduct = cosmeticProductRepository.save(
@@ -62,7 +60,6 @@ public class UserCosmeticService {
                 UserCosmetic.builder()
                         .user(user)
                         .cosmeticProduct(cosmeticProduct)
-                        .usageTime(request.usageTime())
                         .build()
         );
 
@@ -75,12 +72,6 @@ public class UserCosmeticService {
     private void validateMainIngredientCount(List<String> mainIngredients) {
         if (mainIngredients.size() > MAX_MAIN_INGREDIENT_COUNT) {
             throw new GeneralException(CosmeticErrorCode.MAIN_INGREDIENTS_LIMIT_EXCEEDED);
-        }
-    }
-
-    private void validateUsageTime(String usageTime) {
-        if (!UsageTime.supports(usageTime)) {
-            throw new GeneralException(GlobalErrorCode.BAD_REQUEST);
         }
     }
 
