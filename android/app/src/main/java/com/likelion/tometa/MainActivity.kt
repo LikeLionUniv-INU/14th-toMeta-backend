@@ -25,7 +25,10 @@ import androidx.health.connect.client.PermissionController
 import com.likelion.tometa.healthconnect.HealthConnectManager
 import com.likelion.tometa.healthconnect.HealthConnectPermissions
 import com.likelion.tometa.healthconnect.HealthConnectReader
+import com.likelion.tometa.healthconnect.sync.HealthSyncRequestFactory
 import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.ZoneId
 
@@ -34,8 +37,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val healthConnectManager = HealthConnectManager(this)
-        val healthConnectReader = HealthConnectReader(healthConnectManager)
+        val healthConnectManager =
+            HealthConnectManager(this)
+
+        val healthConnectReader =
+            HealthConnectReader(
+                healthConnectManager
+            )
+
+        val healthSyncRequestFactory =
+            HealthSyncRequestFactory(
+                healthConnectReader
+            )
 
         setContent {
 
@@ -44,7 +57,9 @@ class MainActivity : ComponentActivity() {
             }
 
             var statusText by remember {
-                mutableStateOf("Health Connect 상태 확인 중...")
+                mutableStateOf(
+                    "Health Connect 상태 확인 중..."
+                )
             }
 
             var permissionText by remember {
@@ -55,7 +70,8 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf("")
             }
 
-            val coroutineScope = rememberCoroutineScope()
+            val coroutineScope =
+                rememberCoroutineScope()
 
             val permissionLauncher =
                 rememberLauncherForActivityResult(
@@ -75,13 +91,16 @@ class MainActivity : ComponentActivity() {
                         }
 
                     permissionText =
-                        "허용된 권한 수: ${grantedPermissions.size} / " +
+                        "허용된 권한 수: " +
+                                "${grantedPermissions.size} / " +
                                 "${HealthConnectPermissions.READ_PERMISSIONS.size}"
                 }
 
             LaunchedEffect(Unit) {
 
-                val status = healthConnectManager.getSdkStatus()
+                val status =
+                    healthConnectManager.getSdkStatus()
+
                 sdkStatus = status
 
                 when (status) {
@@ -89,7 +108,8 @@ class MainActivity : ComponentActivity() {
                     HealthConnectClient.SDK_AVAILABLE -> {
 
                         val grantedPermissions =
-                            healthConnectManager.getGrantedPermissions()
+                            healthConnectManager
+                                .getGrantedPermissions()
 
                         statusText =
                             if (
@@ -103,19 +123,24 @@ class MainActivity : ComponentActivity() {
                             }
 
                         permissionText =
-                            "허용된 권한 수: ${grantedPermissions.size} / " +
+                            "허용된 권한 수: " +
+                                    "${grantedPermissions.size} / " +
                                     "${HealthConnectPermissions.READ_PERMISSIONS.size}"
                     }
 
                     HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
+
                         statusText =
                             "Health Connect 설치 또는 업데이트가 필요합니다."
+
                         permissionText = ""
                     }
 
                     else -> {
+
                         statusText =
                             "이 기기에서는 Health Connect를 사용할 수 없습니다."
+
                         permissionText = ""
                     }
                 }
@@ -143,7 +168,10 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-                if (sdkStatus == HealthConnectClient.SDK_AVAILABLE) {
+                if (
+                    sdkStatus ==
+                    HealthConnectClient.SDK_AVAILABLE
+                ) {
 
                     Spacer(
                         modifier = Modifier.height(24.dp)
@@ -151,12 +179,15 @@ class MainActivity : ComponentActivity() {
 
                     Button(
                         onClick = {
+
                             permissionLauncher.launch(
                                 HealthConnectPermissions.READ_PERMISSIONS
                             )
                         }
                     ) {
-                        Text("Health Connect 권한 요청")
+                        Text(
+                            "Health Connect 권한 요청"
+                        )
                     }
 
                     Spacer(
@@ -190,12 +221,10 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     ) {
-                        Text("권한 상태 다시 확인")
+                        Text(
+                            "권한 상태 다시 확인"
+                        )
                     }
-
-                    Spacer(
-                        modifier = Modifier.height(8.dp)
-                    )
 
                     Spacer(
                         modifier = Modifier.height(8.dp)
@@ -206,9 +235,13 @@ class MainActivity : ComponentActivity() {
 
                             coroutineScope.launch {
 
-                                if (!healthConnectManager.hasAllPermissions()) {
+                                if (
+                                    !healthConnectManager
+                                        .hasAllPermissions()
+                                ) {
                                     healthDataText =
                                         "Health Connect 권한이 부족합니다."
+
                                     return@launch
                                 }
 
@@ -217,13 +250,16 @@ class MainActivity : ComponentActivity() {
 
                                 try {
 
-                                    val zoneId = ZoneId.systemDefault()
+                                    val zoneId =
+                                        ZoneId.systemDefault()
 
-                                    val referenceTime = Instant.now()
+                                    val referenceTime =
+                                        Instant.now()
 
-                                    val today = referenceTime
-                                        .atZone(zoneId)
-                                        .toLocalDate()
+                                    val today =
+                                        referenceTime
+                                            .atZone(zoneId)
+                                            .toLocalDate()
 
                                     val startDate =
                                         today.minusDays(6)
@@ -239,34 +275,29 @@ class MainActivity : ComponentActivity() {
                                     val endTime =
                                         referenceTime
 
-                                    val summary =
-                                        healthConnectReader.readSummary(
-                                            startTime = startTime,
-                                            endTime = endTime,
-                                            startDate = startDate,
-                                            endDateExclusive = endDateExclusive,
-                                            zoneId = zoneId
-                                        )
+                                    val request =
+                                        healthSyncRequestFactory
+                                            .create(
+                                                startTime = startTime,
+                                                endTime = endTime,
+                                                startDate = startDate,
+                                                endDateExclusive = endDateExclusive,
+                                                zoneId = zoneId
+                                            )
 
-                                    val stepsText =
-                                        summary.dailySteps.joinToString(
-                                            separator = "\n"
-                                        ) {
-                                            "${it.date}: ${it.totalSteps}보"
-                                        }
+                                    val json =
+                                        Json.encodeToString(
+                                            request
+                                        )
 
                                     healthDataText =
                                         """
-                    최근 7일 Health Connect 조회 성공
+                                        서버 동기화 JSON 생성 성공
 
-                    수면 Record: ${summary.sleepRecordCount}
-                    심박 Record: ${summary.heartRateRecordCount}
-                    심박 Sample: ${summary.heartRateSampleCount}
-                    운동 Record: ${summary.exerciseRecordCount}
-
-                    일별 걸음 수
-                    $stepsText
-                    """.trimIndent()
+                                        Raw Record: ${request.records.size}
+                                        Daily Steps: ${request.dailySteps.size}
+                                        JSON Size: ${json.length} chars
+                                        """.trimIndent()
 
                                 } catch (e: Exception) {
 
@@ -276,10 +307,14 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     ) {
-                        Text("최근 7일 데이터 조회")
+                        Text(
+                            "최근 7일 데이터 조회"
+                        )
                     }
 
-                    if (healthDataText.isNotEmpty()) {
+                    if (
+                        healthDataText.isNotEmpty()
+                    ) {
 
                         Spacer(
                             modifier = Modifier.height(16.dp)

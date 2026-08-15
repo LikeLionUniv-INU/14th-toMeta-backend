@@ -1,19 +1,13 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
     namespace = "com.likelion.tometa"
 
     compileSdk = 37
-
-//    compileSdk {
-//        version = release(36) {
-//            minorApiLevel = 1
-//        }
-//    }
-
     defaultConfig {
         applicationId = "com.likelion.tometa"
         minSdk = 28
@@ -53,6 +47,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation("androidx.health.connect:connect-client:1.2.0-alpha04")
     implementation("androidx.activity:activity-compose:1.13.0")
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
