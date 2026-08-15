@@ -70,4 +70,10 @@ public class HealthConnection {
     public boolean isActive() {
         return revokedAt == null;
     }
+
+    public void reconnect(String deviceTokenHash) {
+        this.deviceTokenHash = deviceTokenHash;
+        this.connectedAt = LocalDateTime.now();
+        this.revokedAt = null;
+    }
 }
