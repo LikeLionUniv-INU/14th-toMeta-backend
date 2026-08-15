@@ -1,11 +1,12 @@
 package com.likelion.tometa.domain.health.dto.request;
 
+import tools.jackson.databind.JsonNode;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record HealthRawRecordRequestDto(
 
@@ -18,16 +19,21 @@ public record HealthRawRecordRequestDto(
         String recordType,
 
         @NotNull(message = "시작 시간은 필수입니다.")
-        LocalDateTime startTime,
+        Instant startTime,
 
-        LocalDateTime endTime,
+        Instant endTime,
 
-        @NotBlank(message = "Health Connect 원본 데이터는 필수입니다.")
-        String payload
+        @NotNull(message = "Health Connect 원본 데이터는 필수입니다.")
+        JsonNode payload
 ) {
 
     @AssertTrue(message = "종료 시간은 시작 시간보다 빠를 수 없습니다.")
     public boolean isValidTimeRange() {
         return startTime == null || endTime == null || !endTime.isBefore(startTime);
+    }
+
+    @AssertTrue(message = "Health Connect 원본 데이터는 JSON Object 형식이어야 합니다.")
+    public boolean isPayloadObject() {
+        return payload == null || payload.isObject();
     }
 }
