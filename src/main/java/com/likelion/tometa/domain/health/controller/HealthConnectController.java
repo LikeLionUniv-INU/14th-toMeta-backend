@@ -1,6 +1,7 @@
 package com.likelion.tometa.domain.health.controller;
 
 import com.likelion.tometa.domain.health.dto.request.HealthConnectionRequestDto;
+import com.likelion.tometa.domain.health.dto.response.HealthConnectStatusResponseDto;
 import com.likelion.tometa.domain.health.dto.response.HealthConnectionResponseDto;
 import com.likelion.tometa.domain.health.service.HealthConnectService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
@@ -23,6 +24,15 @@ public class HealthConnectController {
             @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false) String sessionToken
     ) {
         HealthConnectionResponseDto result = healthConnectService.connect(request, sessionToken);
+
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/status")
+    public ResponseEntity<ApiResponse<HealthConnectStatusResponseDto>> getStatus(
+            @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false) String sessionToken
+    ) {
+        HealthConnectStatusResponseDto result = healthConnectService.getStatus(sessionToken);
 
         return ResponseEntity.ok(ApiResponse.success(result));
     }
