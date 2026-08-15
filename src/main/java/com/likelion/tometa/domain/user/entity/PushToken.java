@@ -34,32 +34,24 @@ public class PushToken extends BaseTimeEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(
-            name = "device_id",
-            nullable = false,
-            length = 255
-    )
+    @Column(name = "device_id", nullable = false, length = 255)
     private String deviceId;
 
-    @Column(
-            name = "token",
-            nullable = false,
-            length = 512
-    )
-    private String token;
+    @Column(name = "token", nullable = false, length = 512)
+    private String firebaseInstallationId;
 
     @Builder
     private PushToken(
             User user,
             String deviceId,
-            String token
+            String firebaseInstallationId
     ) {
         this.user = user;
         this.deviceId = deviceId;
-        this.token = token;
+        this.firebaseInstallationId = firebaseInstallationId;
     }
 
-    public void updateToken(String token) {
-        this.token = token;
+    public void updateFirebaseInstallationId(String firebaseInstallationId) {
+        this.firebaseInstallationId = firebaseInstallationId;
     }
 }

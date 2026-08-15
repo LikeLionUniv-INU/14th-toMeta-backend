@@ -113,9 +113,10 @@
 
 ### 알림
 
-- 실제 FCM 발송 대상 기기는 `PushToken`에서 관리합니다.
-- 사용자가 어떤 알림을 받을지는 `UserNotificationSetting`에서 관리합니다.
-- FCM Token과 사용자 알림 설정은 서로 독립적으로 관리합니다.
+- 실제 FCM 발송 대상 앱 인스턴스는 `PushToken`에서 관리합니다.
+- FCM 대상 식별자로 Firebase Installation ID(FID)를 저장합니다.
+- `deviceId`는 서비스 내부 Android 앱 설치본 식별자로 사용합니다.
+- Firebase Installation ID와 사용자 알림 설정은 서로 독립적으로 관리합니다.
 
 ## 확인할 부분
 
