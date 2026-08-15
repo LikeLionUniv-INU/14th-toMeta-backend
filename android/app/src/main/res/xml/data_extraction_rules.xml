@@ -9,6 +9,10 @@
         <exclude
             domain="sharedpref"
             path="com.likelion.tometa.health_device_token.xml" />
+
+        <exclude
+            domain="sharedpref"
+            path="com.likelion.tometa.firebase_installation.xml" />
     </cloud-backup>
 
     <device-transfer>
@@ -19,6 +23,10 @@
         <exclude
             domain="sharedpref"
             path="com.likelion.tometa.health_device_token.xml" />
+
+        <exclude
+            domain="sharedpref"
+            path="com.likelion.tometa.firebase_installation.xml" />
     </device-transfer>
 
 </data-extraction-rules>

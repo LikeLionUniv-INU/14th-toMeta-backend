@@ -9,4 +9,8 @@
         domain="sharedpref"
         path="com.likelion.tometa.health_device_token.xml" />
 
+    <exclude
+        domain="sharedpref"
+        path="com.likelion.tometa.firebase_installation.xml" />
+
 </full-backup-content>
