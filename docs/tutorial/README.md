@@ -57,7 +57,6 @@
 
 5. enum 성격의 컬럼은 물리 ERD와 동일하게 `VARCHAR` + Java `String`으로 관리합니다.
   - API/DTO 계층에서 허용값을 검증합니다.
-  - 예: `CosmeticSet.usageTime` → `morning`, `night`, `both`
 
 6. `payload`, `ingredients_snapshot`은 MySQL JSON 컬럼을 유지하면서 Java에서는 JSON 문자열로 관리합니다.
   - 필요 시 추후 `JsonNode + @JdbcTypeCode(SqlTypes.JSON)` 형태로 변경할 수 있습니다.
