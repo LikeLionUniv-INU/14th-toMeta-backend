@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "485987892370",
+    "project_id": "to-meta",
+    "storage_bucket": "to-meta.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:485987892370:android:c30da333d7abbb7cc87a4b",
+        "android_client_info": {
+          "package_name": "com.likelion.tometa"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjQwyBkzAe_hrJ3XDwRDvBz7_2EUXaECg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
