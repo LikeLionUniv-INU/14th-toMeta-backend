@@ -5,4 +5,8 @@
         domain="sharedpref"
         path="com.likelion.tometa.health_connect.xml" />
 
+    <exclude
+        domain="sharedpref"
+        path="com.likelion.tometa.health_device_token.xml" />
+
 </full-backup-content>
