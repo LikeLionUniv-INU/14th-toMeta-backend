@@ -19,6 +19,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -158,6 +160,42 @@ class UserCosmeticControllerTest {
                           "isSuccess": false,
                           "code": "COSMETIC_4001",
                           "message": "주요 성분은 최대 5개까지 입력할 수 있습니다.",
+                          "result": null
+                        }
+                        """));
+    }
+
+    @Test
+    void deleteUserCosmetic_returnsSuccess() throws Exception {
+        mockMvc.perform(delete("/api/user-cosmetics/{userCosmeticId}", 1L)
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": true,
+                          "code": "COMMON_200",
+                          "message": "요청에 성공했습니다.",
+                          "result": null
+                        }
+                        """));
+
+        verify(userCosmeticService).deleteUserCosmetic(1L, "session-token");
+    }
+
+    @Test
+    void deleteUserCosmetic_returnsNotFound() throws Exception {
+        doThrow(new GeneralException(CosmeticErrorCode.USER_COSMETIC_NOT_FOUND))
+                .when(userCosmeticService)
+                .deleteUserCosmetic(1L, "session-token");
+
+        mockMvc.perform(delete("/api/user-cosmetics/{userCosmeticId}", 1L)
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "COSMETIC_4042",
+                          "message": "등록된 화장품을 찾을 수 없습니다.",
                           "result": null
                         }
                         """));

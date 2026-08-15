@@ -21,12 +21,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
@@ -154,5 +157,42 @@ class UserCosmeticServiceTest {
                 cosmeticIngredientRepository,
                 userCosmeticRepository
         );
+    }
+
+    @Test
+    void deleteUserCosmetic_softDeletesOwnedActiveCosmetic() {
+        CosmeticProduct cosmeticProduct = CosmeticProduct.builder()
+                .createdByUser(user)
+                .sourceType("manual")
+                .productName("진정 세럼")
+                .productType("serum")
+                .build();
+        UserCosmetic userCosmetic = UserCosmetic.builder()
+                .user(user)
+                .cosmeticProduct(cosmeticProduct)
+                .build();
+
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(userCosmeticRepository.findByIdAndUserAndDeletedAtIsNull(1L, user))
+                .thenReturn(Optional.of(userCosmetic));
+
+        userCosmeticService.deleteUserCosmetic(1L, SESSION_TOKEN);
+
+        assertTrue(userCosmetic.isDeleted());
+        assertNotNull(userCosmetic.getDeletedAt());
+    }
+
+    @Test
+    void deleteUserCosmetic_rejectsMissingOwnedActiveCosmetic() {
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(userCosmeticRepository.findByIdAndUserAndDeletedAtIsNull(1L, user))
+                .thenReturn(Optional.empty());
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> userCosmeticService.deleteUserCosmetic(1L, SESSION_TOKEN)
+        );
+
+        assertSame(CosmeticErrorCode.USER_COSMETIC_NOT_FOUND, exception.getErrorCode());
     }
 }
