@@ -63,6 +63,18 @@ public class UserCosmeticService {
         );
     }
 
+    @Transactional
+    public void deleteUserCosmetic(Long userCosmeticId, String sessionToken) {
+        User user = sessionUserResolver.resolve(sessionToken);
+
+        UserCosmetic userCosmetic = userCosmeticRepository
+                .findByIdAndUserAndDeletedAtIsNull(userCosmeticId, user)
+                .orElseThrow(() -> new GeneralException(
+                        CosmeticErrorCode.USER_COSMETIC_NOT_FOUND));
+
+        userCosmetic.softDelete();
+    }
+
     private void validateMainIngredientCount(List<String> mainIngredients) {
         if (mainIngredients.size() > MAX_MAIN_INGREDIENT_COUNT) {
             throw new GeneralException(CosmeticErrorCode.MAIN_INGREDIENTS_LIMIT_EXCEEDED);

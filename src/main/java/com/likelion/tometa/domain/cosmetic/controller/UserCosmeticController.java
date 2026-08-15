@@ -8,6 +8,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,6 +29,17 @@ public class UserCosmeticController {
             String sessionToken
     ) {
         userCosmeticService.createManualCosmetic(request, sessionToken);
+
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    @DeleteMapping("/{userCosmeticId}")
+    public ResponseEntity<ApiResponse<Void>> deleteUserCosmetic(
+            @PathVariable("userCosmeticId") Long userCosmeticId,
+            @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false)
+            String sessionToken
+    ) {
+        userCosmeticService.deleteUserCosmetic(userCosmeticId, sessionToken);
 
         return ResponseEntity.ok(ApiResponse.success());
     }
