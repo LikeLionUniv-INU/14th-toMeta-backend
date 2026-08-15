@@ -24,6 +24,11 @@ public enum CosmeticErrorCode implements BaseErrorCode {
             "COSMETIC_SET_4002",
             "세트에 동일한 화장품을 중복으로 선택할 수 없습니다."
     ),
+    COSMETIC_SET_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "COSMETIC_SET_4041",
+            "화장품 세트를 찾을 수 없습니다."
+    ),
     USER_COSMETIC_NOT_FOUND(
             HttpStatus.NOT_FOUND,
             "COSMETIC_4042",
