@@ -8,6 +8,7 @@ import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.entity.UserNotificationSetting;
 import com.likelion.tometa.domain.user.repository.AnonymousSessionRepository;
 import com.likelion.tometa.domain.user.repository.UserNotificationSettingRepository;
+import com.likelion.tometa.domain.user.repository.UserRepository;
 import com.likelion.tometa.domain.user.support.AnonymousSessionTokenProvider;
 import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +25,7 @@ public class UserService {
     private final AnonymousSessionRepository anonymousSessionRepository;
     private final UserNotificationSettingRepository userNotificationSettingRepository;
     private final AnonymousSessionTokenProvider tokenProvider;
+    private final UserRepository userRepository;
 
     @Transactional
     public void saveProfile(UserProfileRequestDto request, String sessionToken) {
@@ -52,7 +54,8 @@ public class UserService {
     @Transactional
     public void saveNotificationSettings(UserNotificationSettingRequestDto request, String sessionToken) {
         AnonymousSession session = getValidSession(sessionToken);
-        User user = session.getUser();
+        User user = userRepository.findWithLockById(session.getUser().getId())
+                .orElseThrow(() -> new GeneralException(UserErrorCode.INVALID_ANONYMOUS_SESSION));
 
         if (userNotificationSettingRepository.existsByUser_Id(user.getId())) {
             session.touch();
