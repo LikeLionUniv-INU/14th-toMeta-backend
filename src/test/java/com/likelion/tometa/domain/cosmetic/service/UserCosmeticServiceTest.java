@@ -1,8 +1,7 @@
 package com.likelion.tometa.domain.cosmetic.service;
 
 import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
-import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequest;
-import com.likelion.tometa.domain.cosmetic.dto.response.ManualCosmeticCreateResponse;
+import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
@@ -30,7 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -64,24 +62,17 @@ class UserCosmeticServiceTest {
 
     @Test
     void createManualCosmetic_savesProductIngredientsAndUserCosmetic() {
-        ManualCosmeticCreateRequest request = new ManualCosmeticCreateRequest(
+        ManualCosmeticCreateRequestDto request = new ManualCosmeticCreateRequestDto(
                 "내가 쓰는 진정 세럼",
                 "serum",
                 List.of("히알루론산", "나이아신아마이드", "판테놀")
         );
-        UserCosmetic savedUserCosmetic = mock(UserCosmetic.class);
 
         when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
         when(cosmeticProductRepository.save(any(CosmeticProduct.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(userCosmeticRepository.save(any(UserCosmetic.class))).thenReturn(savedUserCosmetic);
-        when(savedUserCosmetic.getId()).thenReturn(13L);
 
-        ManualCosmeticCreateResponse response =
-                userCosmeticService.createManualCosmetic(request, SESSION_TOKEN);
-
-        assertEquals(13L, response.userCosmeticId());
-        assertEquals("내가 쓰는 진정 세럼", response.productName());
+        userCosmeticService.createManualCosmetic(request, SESSION_TOKEN);
 
         ArgumentCaptor<CosmeticProduct> productCaptor =
                 ArgumentCaptor.forClass(CosmeticProduct.class);
@@ -119,12 +110,11 @@ class UserCosmeticServiceTest {
         assertSame(user, capturedUserCosmetic.getUser());
         assertSame(savedProduct, capturedUserCosmetic.getCosmeticProduct());
         assertNull(capturedUserCosmetic.getCustomName());
-        assertNull(capturedUserCosmetic.getUsageTime());
     }
 
     @Test
     void createManualCosmetic_rejectsMoreThanFiveMainIngredients() {
-        ManualCosmeticCreateRequest request = new ManualCosmeticCreateRequest(
+        ManualCosmeticCreateRequestDto request = new ManualCosmeticCreateRequestDto(
                 "제품명",
                 "serum",
                 List.of("1", "2", "3", "4", "5", "6")
@@ -146,7 +136,7 @@ class UserCosmeticServiceTest {
 
     @Test
     void createManualCosmetic_rejectsUnsupportedProductType() {
-        ManualCosmeticCreateRequest request = new ManualCosmeticCreateRequest(
+        ManualCosmeticCreateRequestDto request = new ManualCosmeticCreateRequestDto(
                 "제품명",
                 "cleanser",
                 List.of()

@@ -10,13 +10,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -84,6 +85,12 @@ class AnonymousSessionUserResolverTest {
                 .tokenHash("token-hash")
                 .expiresAt(LocalDateTime.now().plusDays(1))
                 .build();
+        LocalDateTime lastAccessedAtBeforeResolve = LocalDateTime.now().minusDays(1);
+        ReflectionTestUtils.setField(
+                session,
+                "lastAccessedAt",
+                lastAccessedAtBeforeResolve
+        );
         when(tokenProvider.hash("valid-token")).thenReturn("token-hash");
         when(anonymousSessionRepository.findByTokenHash("token-hash"))
                 .thenReturn(Optional.of(session));
@@ -91,6 +98,6 @@ class AnonymousSessionUserResolverTest {
         User resolvedUser = sessionUserResolver.resolve("valid-token");
 
         assertSame(user, resolvedUser);
-        assertNotNull(session.getLastAccessedAt());
+        assertTrue(session.getLastAccessedAt().isAfter(lastAccessedAtBeforeResolve));
     }
 }

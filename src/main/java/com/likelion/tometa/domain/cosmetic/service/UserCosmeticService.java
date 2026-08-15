@@ -1,8 +1,7 @@
 package com.likelion.tometa.domain.cosmetic.service;
 
 import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
-import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequest;
-import com.likelion.tometa.domain.cosmetic.dto.response.ManualCosmeticCreateResponse;
+import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
@@ -34,8 +33,8 @@ public class UserCosmeticService {
     private final UserCosmeticRepository userCosmeticRepository;
 
     @Transactional
-    public ManualCosmeticCreateResponse createManualCosmetic(
-            ManualCosmeticCreateRequest request,
+    public void createManualCosmetic(
+            ManualCosmeticCreateRequestDto request,
             String sessionToken
     ) {
         User user = sessionUserResolver.resolve(sessionToken);
@@ -56,16 +55,11 @@ public class UserCosmeticService {
                 createMainIngredients(cosmeticProduct, request.mainIngredients())
         );
 
-        UserCosmetic userCosmetic = userCosmeticRepository.save(
+        userCosmeticRepository.save(
                 UserCosmetic.builder()
                         .user(user)
                         .cosmeticProduct(cosmeticProduct)
                         .build()
-        );
-
-        return new ManualCosmeticCreateResponse(
-                userCosmetic.getId(),
-                cosmeticProduct.getProductName()
         );
     }
 

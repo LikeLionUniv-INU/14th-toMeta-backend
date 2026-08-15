@@ -1,7 +1,6 @@
 package com.likelion.tometa.domain.cosmetic.controller;
 
-import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequest;
-import com.likelion.tometa.domain.cosmetic.dto.response.ManualCosmeticCreateResponse;
+import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
 import com.likelion.tometa.domain.cosmetic.service.UserCosmeticService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
 import com.likelion.tometa.global.response.ApiResponse;
@@ -22,14 +21,13 @@ public class UserCosmeticController {
     private final UserCosmeticService userCosmeticService;
 
     @PostMapping("/manual")
-    public ResponseEntity<ApiResponse<ManualCosmeticCreateResponse>> createManualCosmetic(
-            @Valid @RequestBody ManualCosmeticCreateRequest request,
+    public ResponseEntity<ApiResponse<Void>> createManualCosmetic(
+            @Valid @RequestBody ManualCosmeticCreateRequestDto request,
             @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false)
             String sessionToken
     ) {
-        ManualCosmeticCreateResponse result =
-                userCosmeticService.createManualCosmetic(request, sessionToken);
+        userCosmeticService.createManualCosmetic(request, sessionToken);
 
-        return ResponseEntity.ok(ApiResponse.success(result));
+        return ResponseEntity.ok(ApiResponse.success());
     }
 }

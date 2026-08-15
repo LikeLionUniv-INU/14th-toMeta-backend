@@ -26,25 +26,16 @@ public class CosmeticSet extends BaseTimeEntity {
     @Column(name = "name", nullable = false, length = 100)
     private String name;
 
-    @Column(name = "usage_time", nullable = false, length = 20)
-    private String usageTime;
-
     @Builder
     private CosmeticSet(
             User user,
-            String name,
-            String usageTime
+            String name
     ) {
         this.user = user;
         this.name = name;
-        this.usageTime = usageTime;
     }
 
-    public void update(
-            String name,
-            String usageTime
-    ) {
+    public void update(String name) {
         this.name = name;
-        this.usageTime = usageTime;
     }
 }

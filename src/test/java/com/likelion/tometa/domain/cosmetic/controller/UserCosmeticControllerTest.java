@@ -1,8 +1,7 @@
 package com.likelion.tometa.domain.cosmetic.controller;
 
 import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
-import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequest;
-import com.likelion.tometa.domain.cosmetic.dto.response.ManualCosmeticCreateResponse;
+import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
 import com.likelion.tometa.domain.cosmetic.service.UserCosmeticService;
 import com.likelion.tometa.domain.user.code.UserErrorCode;
 import com.likelion.tometa.global.exception.GeneralException;
@@ -19,7 +18,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -43,11 +42,6 @@ class UserCosmeticControllerTest {
 
     @Test
     void createManualCosmetic_returnsCreatedCosmetic() throws Exception {
-        when(userCosmeticService.createManualCosmetic(
-                any(ManualCosmeticCreateRequest.class),
-                eq("session-token")
-        )).thenReturn(new ManualCosmeticCreateResponse(13L, "내가 쓰는 진정 세럼"));
-
         mockMvc.perform(post("/api/user-cosmetics/manual")
                         .contentType(MediaType.APPLICATION_JSON)
                         .cookie(new Cookie("anonymous_session", "session-token"))
@@ -55,7 +49,7 @@ class UserCosmeticControllerTest {
                                 {
                                   "productName": "내가 쓰는 진정 세럼",
                                   "productType": "serum",
-                                  "mainIngredients": ["히알루론산", "나이아신아마이드", "판테놀"]
+                                  "mainIngredients": ["히알루론산", "나이아신아마이드"]
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -64,16 +58,13 @@ class UserCosmeticControllerTest {
                           "isSuccess": true,
                           "code": "COMMON_200",
                           "message": "요청에 성공했습니다.",
-                          "result": {
-                            "userCosmeticId": 13,
-                            "productName": "내가 쓰는 진정 세럼"
-                          }
+                          "result": null
                         }
                         """));
     }
 
     @Test
-    void createManualCosmetic_rejectsFewerThanThreeIngredients() throws Exception {
+    void createManualCosmetic_rejectsEmptyIngredients() throws Exception {
         mockMvc.perform(post("/api/user-cosmetics/manual")
                         .contentType(MediaType.APPLICATION_JSON)
                         .cookie(new Cookie("anonymous_session", "session-token"))
@@ -81,7 +72,7 @@ class UserCosmeticControllerTest {
                                 {
                                   "productName": "제품명",
                                   "productType": "serum",
-                                  "mainIngredients": ["히알루론산", "판테놀"]
+                                  "mainIngredients": []
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -89,7 +80,7 @@ class UserCosmeticControllerTest {
                         {
                           "isSuccess": false,
                           "code": "COMMON_400",
-                          "message": "주요 성분은 최소 3개 이상 입력해야 합니다.",
+                          "message": "주요 성분은 최소 1개 이상 입력해야 합니다.",
                           "result": null
                         }
                         """));
@@ -120,10 +111,12 @@ class UserCosmeticControllerTest {
 
     @Test
     void createManualCosmetic_returnsUnauthorizedForInvalidSession() throws Exception {
-        when(userCosmeticService.createManualCosmetic(
-                any(ManualCosmeticCreateRequest.class),
-                eq("invalid-token")
-        )).thenThrow(new GeneralException(UserErrorCode.INVALID_ANONYMOUS_SESSION));
+        doThrow(new GeneralException(UserErrorCode.INVALID_ANONYMOUS_SESSION))
+                .when(userCosmeticService)
+                .createManualCosmetic(
+                        any(ManualCosmeticCreateRequestDto.class),
+                        eq("invalid-token")
+                );
 
         mockMvc.perform(post("/api/user-cosmetics/manual")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -142,10 +135,12 @@ class UserCosmeticControllerTest {
 
     @Test
     void createManualCosmetic_returnsCosmeticErrorForTooManyIngredients() throws Exception {
-        when(userCosmeticService.createManualCosmetic(
-                any(ManualCosmeticCreateRequest.class),
-                eq("session-token")
-        )).thenThrow(new GeneralException(CosmeticErrorCode.MAIN_INGREDIENTS_LIMIT_EXCEEDED));
+        doThrow(new GeneralException(CosmeticErrorCode.MAIN_INGREDIENTS_LIMIT_EXCEEDED))
+                .when(userCosmeticService)
+                .createManualCosmetic(
+                        any(ManualCosmeticCreateRequestDto.class),
+                        eq("session-token")
+                );
 
         mockMvc.perform(post("/api/user-cosmetics/manual")
                         .contentType(MediaType.APPLICATION_JSON)
