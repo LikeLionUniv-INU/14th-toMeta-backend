@@ -8,7 +8,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Getter
@@ -44,56 +43,28 @@ public class DailyRecord extends BaseTimeEntity {
     @Column(name = "memo", length = 300)
     private String memo;
 
-    @Column(name = "weather_condition", length = 30)
-    private String weatherCondition;
-
-    @Column(name = "temperature_min", precision = 4, scale = 1)
-    private BigDecimal temperatureMin;
-
-    @Column(name = "temperature_max", precision = 4, scale = 1)
-    private BigDecimal temperatureMax;
-
-    @Column(name = "humidity")
-    private Integer humidity;
-
     @Builder
     private DailyRecord(
             User user,
             LocalDate recordDate,
             String skinStatus,
             String foodMemo,
-            String memo,
-            String weatherCondition,
-            BigDecimal temperatureMin,
-            BigDecimal temperatureMax,
-            Integer humidity
+            String memo
     ) {
         this.user = user;
         this.recordDate = recordDate;
         this.skinStatus = skinStatus;
         this.foodMemo = foodMemo;
         this.memo = memo;
-        this.weatherCondition = weatherCondition;
-        this.temperatureMin = temperatureMin;
-        this.temperatureMax = temperatureMax;
-        this.humidity = humidity;
     }
 
     public void update(
             String skinStatus,
             String foodMemo,
-            String memo,
-            String weatherCondition,
-            BigDecimal temperatureMin,
-            BigDecimal temperatureMax,
-            Integer humidity
+            String memo
     ) {
         this.skinStatus = skinStatus;
         this.foodMemo = foodMemo;
         this.memo = memo;
-        this.weatherCondition = weatherCondition;
-        this.temperatureMin = temperatureMin;
-        this.temperatureMax = temperatureMax;
-        this.humidity = humidity;
     }
 }
