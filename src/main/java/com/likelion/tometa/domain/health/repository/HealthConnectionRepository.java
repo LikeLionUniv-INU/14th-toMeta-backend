@@ -10,4 +10,6 @@ public interface HealthConnectionRepository extends JpaRepository<HealthConnecti
     boolean existsByUser_IdAndRevokedAtIsNull(Long userId);
 
     Optional<HealthConnection> findByUser_IdAndDeviceId(Long userId, String deviceId);
+
+    Optional<HealthConnection> findTopByUser_IdAndRevokedAtIsNullOrderByLastSyncedAtDesc(Long userId);
 }

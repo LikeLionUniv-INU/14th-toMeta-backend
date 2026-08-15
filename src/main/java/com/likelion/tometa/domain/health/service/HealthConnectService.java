@@ -1,6 +1,7 @@
 package com.likelion.tometa.domain.health.service;
 
 import com.likelion.tometa.domain.health.dto.request.HealthConnectionRequestDto;
+import com.likelion.tometa.domain.health.dto.response.HealthConnectStatusResponseDto;
 import com.likelion.tometa.domain.health.dto.response.HealthConnectionResponseDto;
 import com.likelion.tometa.domain.health.entity.HealthConnection;
 import com.likelion.tometa.domain.health.repository.HealthConnectionRepository;
@@ -56,6 +57,24 @@ public class HealthConnectService {
         session.touch();
 
         return new HealthConnectionResponseDto(deviceToken);
+    }
+
+    @Transactional
+    public HealthConnectStatusResponseDto getStatus(String sessionToken) {
+        AnonymousSession session = getValidSession(sessionToken);
+        User user = session.getUser();
+
+        Optional<HealthConnection> connection =
+                healthConnectionRepository.findTopByUser_IdAndRevokedAtIsNullOrderByLastSyncedAtDesc(user.getId());
+
+        boolean connected = connection.isPresent();
+        LocalDateTime lastSyncedAt = connection
+                .map(HealthConnection::getLastSyncedAt)
+                .orElse(null);
+
+        session.touch();
+
+        return new HealthConnectStatusResponseDto(connected, lastSyncedAt);
     }
 
     private AnonymousSession getValidSession(String sessionToken) {
