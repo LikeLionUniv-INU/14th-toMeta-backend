@@ -11,10 +11,16 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(
         name = "cosmetic_set_items",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_cosmetic_set_items_set_cosmetic",
-                columnNames = {"cosmetic_set_id", "user_cosmetic_id"}
-        )
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_cosmetic_set_items_set_cosmetic",
+                        columnNames = {"cosmetic_set_id", "user_cosmetic_id"}
+                ),
+                @UniqueConstraint(
+                        name = "uk_cosmetic_set_items_set_order",
+                        columnNames = {"cosmetic_set_id", "item_order"}
+                )
+        }
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CosmeticSetItem extends BaseCreatedEntity {
@@ -32,9 +38,17 @@ public class CosmeticSetItem extends BaseCreatedEntity {
     @JoinColumn(name = "user_cosmetic_id", nullable = false)
     private UserCosmetic userCosmetic;
 
+    @Column(name = "item_order", nullable = false)
+    private Integer itemOrder;
+
     @Builder
-    private CosmeticSetItem(CosmeticSet cosmeticSet, UserCosmetic userCosmetic) {
+    private CosmeticSetItem(
+            CosmeticSet cosmeticSet,
+            UserCosmetic userCosmetic,
+            Integer itemOrder
+    ) {
         this.cosmeticSet = cosmeticSet;
         this.userCosmetic = userCosmetic;
+        this.itemOrder = itemOrder;
     }
 }

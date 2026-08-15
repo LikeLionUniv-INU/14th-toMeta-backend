@@ -1,6 +1,7 @@
 package com.likelion.tometa.domain.cosmetic.entity;
 
 import com.likelion.tometa.domain.common.entity.BaseTimeEntity;
+import com.likelion.tometa.domain.cosmetic.enums.CosmeticSetUsageTime;
 import com.likelion.tometa.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -26,13 +27,19 @@ public class CosmeticSet extends BaseTimeEntity {
     @Column(name = "name", nullable = false, length = 100)
     private String name;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "usage_time", nullable = false, length = 20)
+    private CosmeticSetUsageTime usageTime;
+
     @Builder
     private CosmeticSet(
             User user,
-            String name
+            String name,
+            CosmeticSetUsageTime usageTime
     ) {
         this.user = user;
         this.name = name;
+        this.usageTime = usageTime;
     }
 
     public void update(String name) {
