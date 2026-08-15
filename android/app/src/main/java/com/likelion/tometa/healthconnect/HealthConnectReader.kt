@@ -56,6 +56,7 @@ class HealthConnectReader(
     suspend fun readDailySteps(
         startDate: LocalDate,
         endDateExclusive: LocalDate,
+        endTime: Instant,
         zoneId: ZoneId
     ): List<DailySteps> {
 
@@ -65,14 +66,25 @@ class HealthConnectReader(
 
         while (date.isBefore(endDateExclusive)) {
 
-            val startTime = date
+            val dayStartTime = date
                 .atStartOfDay(zoneId)
                 .toInstant()
 
-            val endTime = date
+            val nextDayStartTime = date
                 .plusDays(1)
                 .atStartOfDay(zoneId)
                 .toInstant()
+
+            val dayEndTime =
+                if (nextDayStartTime.isAfter(endTime)) {
+                    endTime
+                } else {
+                    nextDayStartTime
+                }
+
+            if (!dayStartTime.isBefore(dayEndTime)) {
+                break
+            }
 
             val response = healthConnectManager
                 .getClient()
@@ -82,8 +94,8 @@ class HealthConnectReader(
                             StepsRecord.COUNT_TOTAL
                         ),
                         timeRangeFilter = TimeRangeFilter.between(
-                            startTime,
-                            endTime
+                            dayStartTime,
+                            dayEndTime
                         )
                     )
                 )
@@ -125,6 +137,7 @@ class HealthConnectReader(
             readDailySteps(
                 startDate = startDate,
                 endDateExclusive = endDateExclusive,
+                endTime = endTime,
                 zoneId = zoneId
             )
 

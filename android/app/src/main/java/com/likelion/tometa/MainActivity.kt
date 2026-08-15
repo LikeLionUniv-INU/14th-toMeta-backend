@@ -27,9 +27,7 @@ import com.likelion.tometa.healthconnect.HealthConnectPermissions
 import com.likelion.tometa.healthconnect.HealthConnectReader
 import kotlinx.coroutines.launch
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 
 class MainActivity : ComponentActivity() {
 
@@ -221,7 +219,11 @@ class MainActivity : ComponentActivity() {
 
                                     val zoneId = ZoneId.systemDefault()
 
-                                    val today = LocalDate.now(zoneId)
+                                    val referenceTime = Instant.now()
+
+                                    val today = referenceTime
+                                        .atZone(zoneId)
+                                        .toLocalDate()
 
                                     val startDate =
                                         today.minusDays(6)
@@ -229,14 +231,13 @@ class MainActivity : ComponentActivity() {
                                     val endDateExclusive =
                                         today.plusDays(1)
 
-                                    val endTime =
-                                        Instant.now()
-
                                     val startTime =
-                                        endTime.minus(
-                                            7,
-                                            ChronoUnit.DAYS
-                                        )
+                                        startDate
+                                            .atStartOfDay(zoneId)
+                                            .toInstant()
+
+                                    val endTime =
+                                        referenceTime
 
                                     val summary =
                                         healthConnectReader.readSummary(
