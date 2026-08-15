@@ -24,7 +24,10 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import com.likelion.tometa.healthconnect.HealthConnectManager
 import com.likelion.tometa.healthconnect.HealthConnectPermissions
+import com.likelion.tometa.healthconnect.HealthConnectReader
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.ZoneId
 
 class MainActivity : ComponentActivity() {
 
@@ -32,6 +35,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val healthConnectManager = HealthConnectManager(this)
+        val healthConnectReader = HealthConnectReader(healthConnectManager)
 
         setContent {
 
@@ -44,6 +48,10 @@ class MainActivity : ComponentActivity() {
             }
 
             var permissionText by remember {
+                mutableStateOf("")
+            }
+
+            var healthDataText by remember {
                 mutableStateOf("")
             }
 
@@ -189,12 +197,97 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.height(8.dp)
                     )
 
+                    Spacer(
+                        modifier = Modifier.height(8.dp)
+                    )
+
                     Button(
                         onClick = {
-                            healthConnectManager.openHealthConnectSettings()
+
+                            coroutineScope.launch {
+
+                                if (!healthConnectManager.hasAllPermissions()) {
+                                    healthDataText =
+                                        "Health Connect 권한이 부족합니다."
+                                    return@launch
+                                }
+
+                                healthDataText =
+                                    "Health Connect 데이터 조회 중..."
+
+                                try {
+
+                                    val zoneId = ZoneId.systemDefault()
+
+                                    val referenceTime = Instant.now()
+
+                                    val today = referenceTime
+                                        .atZone(zoneId)
+                                        .toLocalDate()
+
+                                    val startDate =
+                                        today.minusDays(6)
+
+                                    val endDateExclusive =
+                                        today.plusDays(1)
+
+                                    val startTime =
+                                        startDate
+                                            .atStartOfDay(zoneId)
+                                            .toInstant()
+
+                                    val endTime =
+                                        referenceTime
+
+                                    val summary =
+                                        healthConnectReader.readSummary(
+                                            startTime = startTime,
+                                            endTime = endTime,
+                                            startDate = startDate,
+                                            endDateExclusive = endDateExclusive,
+                                            zoneId = zoneId
+                                        )
+
+                                    val stepsText =
+                                        summary.dailySteps.joinToString(
+                                            separator = "\n"
+                                        ) {
+                                            "${it.date}: ${it.totalSteps}보"
+                                        }
+
+                                    healthDataText =
+                                        """
+                    최근 7일 Health Connect 조회 성공
+
+                    수면 Record: ${summary.sleepRecordCount}
+                    심박 Record: ${summary.heartRateRecordCount}
+                    심박 Sample: ${summary.heartRateSampleCount}
+                    운동 Record: ${summary.exerciseRecordCount}
+
+                    일별 걸음 수
+                    $stepsText
+                    """.trimIndent()
+
+                                } catch (e: Exception) {
+
+                                    healthDataText =
+                                        "조회 실패: ${e.message}"
+                                }
+                            }
                         }
                     ) {
-                        Text("Health Connect 설정 열기")
+                        Text("최근 7일 데이터 조회")
+                    }
+
+                    if (healthDataText.isNotEmpty()) {
+
+                        Spacer(
+                            modifier = Modifier.height(16.dp)
+                        )
+
+                        Text(
+                            text = healthDataText
+                        )
                     }
                 }
             }
