@@ -41,3 +41,11 @@ out/
 
 ### Env & Config ###
 .env
+
+### Android ###
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
