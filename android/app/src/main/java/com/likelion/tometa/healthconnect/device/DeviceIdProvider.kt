@@ -13,32 +13,35 @@ class DeviceIdProvider(
             Context.MODE_PRIVATE
         )
 
-    fun getOrCreateDeviceId(): String {
+    fun getOrCreateDeviceId(): String =
+        synchronized(DEVICE_ID_LOCK) {
 
-        val savedDeviceId =
-            preferences.getString(
-                DEVICE_ID_KEY,
-                null
-            )
+            val savedDeviceId =
+                preferences.getString(
+                    DEVICE_ID_KEY,
+                    null
+                )
 
-        if (savedDeviceId != null) {
-            return savedDeviceId
+            if (savedDeviceId != null) {
+                return@synchronized savedDeviceId
+            }
+
+            val newDeviceId =
+                UUID.randomUUID().toString()
+
+            preferences.edit()
+                .putString(
+                    DEVICE_ID_KEY,
+                    newDeviceId
+                )
+                .apply()
+
+            newDeviceId
         }
 
-        val newDeviceId =
-            UUID.randomUUID().toString()
-
-        preferences.edit()
-            .putString(
-                DEVICE_ID_KEY,
-                newDeviceId
-            )
-            .apply()
-
-        return newDeviceId
-    }
-
     private companion object {
+
+        val DEVICE_ID_LOCK = Any()
 
         const val PREFERENCES_NAME =
             "com.likelion.tometa.health_connect"
