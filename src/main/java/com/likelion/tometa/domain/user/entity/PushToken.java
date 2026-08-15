@@ -54,4 +54,8 @@ public class PushToken extends BaseTimeEntity {
     public void updateFirebaseInstallationId(String firebaseInstallationId) {
         this.firebaseInstallationId = firebaseInstallationId;
     }
+
+    public void updateOwner(User user) {
+        this.user = user;
+    }
 }
