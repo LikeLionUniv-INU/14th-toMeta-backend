@@ -1,13 +1,16 @@
 package com.likelion.tometa.domain.health.service;
 
 import com.likelion.tometa.domain.health.code.HealthErrorCode;
+import com.likelion.tometa.domain.health.dto.request.DailyStepsRequestDto;
 import com.likelion.tometa.domain.health.dto.request.HealthConnectionRequestDto;
 import com.likelion.tometa.domain.health.dto.request.HealthRawRecordRequestDto;
 import com.likelion.tometa.domain.health.dto.request.HealthSyncRequestDto;
 import com.likelion.tometa.domain.health.dto.response.HealthConnectStatusResponseDto;
 import com.likelion.tometa.domain.health.dto.response.HealthConnectionResponseDto;
+import com.likelion.tometa.domain.health.entity.DailyHealthSummary;
 import com.likelion.tometa.domain.health.entity.HealthConnection;
 import com.likelion.tometa.domain.health.entity.HealthRawRecord;
+import com.likelion.tometa.domain.health.repository.DailyHealthSummaryRepository;
 import com.likelion.tometa.domain.health.repository.HealthConnectionRepository;
 import com.likelion.tometa.domain.health.repository.HealthRawRecordRepository;
 import com.likelion.tometa.domain.health.support.HealthDeviceTokenProvider;
@@ -22,7 +25,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 @Service
@@ -32,6 +37,7 @@ public class HealthConnectService {
     private final AnonymousSessionRepository anonymousSessionRepository;
     private final HealthConnectionRepository healthConnectionRepository;
     private final HealthRawRecordRepository healthRawRecordRepository;
+    private final DailyHealthSummaryRepository dailyHealthSummaryRepository;
     private final UserRepository userRepository;
     private final AnonymousSessionTokenProvider anonymousSessionTokenProvider;
     private final HealthDeviceTokenProvider healthDeviceTokenProvider;
@@ -86,6 +92,8 @@ public class HealthConnectService {
     @Transactional
     public void sync(HealthSyncRequestDto request, String authorizationHeader) {
         HealthConnection connection = getValidHealthConnection(authorizationHeader);
+        User user = userRepository.findWithLockById(connection.getUser().getId())
+                .orElseThrow(() -> new GeneralException(UserErrorCode.INVALID_ANONYMOUS_SESSION));
 
         for (HealthRawRecordRequestDto record : request.records()) {
             Optional<HealthRawRecord> existingRecord =
@@ -96,9 +104,9 @@ public class HealthConnectService {
 
             if (existingRecord.isPresent()) {
                 existingRecord.get().updatePayload(
-                        record.startTime(),
-                        record.endTime(),
-                        record.payload()
+                        toUtcLocalDateTime(record.startTime()),
+                        toUtcLocalDateTime(record.endTime()),
+                        record.payload().toString()
                 );
                 continue;
             }
@@ -107,15 +115,38 @@ public class HealthConnectService {
                     .healthConnection(connection)
                     .hcRecordId(record.hcRecordId())
                     .recordType(record.recordType())
-                    .startTime(record.startTime())
-                    .endTime(record.endTime())
-                    .payload(record.payload())
+                    .startTime(toUtcLocalDateTime(record.startTime()))
+                    .endTime(toUtcLocalDateTime(record.endTime()))
+                    .payload(record.payload().toString())
                     .build();
 
             healthRawRecordRepository.save(healthRawRecord);
         }
 
+        for (DailyStepsRequestDto dailySteps : request.dailySteps()) {
+            saveDailySteps(user, dailySteps);
+        }
+
         connection.markSynced();
+    }
+
+    private void saveDailySteps(User user, DailyStepsRequestDto request) {
+        DailyHealthSummary summary = dailyHealthSummaryRepository
+                .findByUser_IdAndSummaryDate(user.getId(), request.date())
+                .orElseGet(() -> dailyHealthSummaryRepository.save(
+                        DailyHealthSummary.builder()
+                                .user(user)
+                                .summaryDate(request.date())
+                                .build()
+                ));
+
+        summary.updateSteps(Math.toIntExact(request.totalSteps()));
+    }
+
+    private LocalDateTime toUtcLocalDateTime(Instant instant) {
+        return instant == null
+                ? null
+                : LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
     private HealthConnection getValidHealthConnection(String authorizationHeader) {

@@ -118,4 +118,9 @@ public class DailyHealthSummary {
         this.steps = steps;
         this.calculatedAt = LocalDateTime.now();
     }
+
+    public void updateSteps(Integer steps) {
+        this.steps = steps;
+        this.calculatedAt = LocalDateTime.now();
+    }
 }
