@@ -8,6 +8,7 @@ import com.likelion.tometa.healthconnect.sync.dto.DailyStepsSyncDto
 import com.likelion.tometa.healthconnect.sync.dto.HealthRawRecordSyncDto
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.time.Duration
@@ -181,13 +182,49 @@ object HealthSyncMapper {
             }
 
             put(
-                "segmentCount",
-                record.segments.size
+                "segments",
+                buildJsonArray {
+                    record.segments.forEach { segment ->
+                        add(
+                            buildJsonObject {
+                                put("startTime", segment.startTime.toString())
+                                put("endTime", segment.endTime.toString())
+                                put("segmentType", segment.segmentType)
+                                put("repetitions", segment.repetitions)
+
+                                segment.weight?.let {
+                                    put("weightGrams", it.inGrams)
+                                }
+
+                                segment.setIndex?.let {
+                                    put("setIndex", it)
+                                }
+
+                                segment.rateOfPerceivedExertion?.let {
+                                    put("rateOfPerceivedExertion", it)
+                                }
+                            }
+                        )
+                    }
+                }
             )
 
             put(
-                "lapCount",
-                record.laps.size
+                "laps",
+                buildJsonArray {
+                    record.laps.forEach { lap ->
+                        add(
+                            buildJsonObject {
+                                put("startTime", lap.startTime.toString())
+                                put("endTime", lap.endTime.toString())
+
+                                lap.length?.let {
+                                    put("lengthMeters", it.inMeters)
+                                }
+                            }
+                        )
+                    }
+                }
             )
 
             record.plannedExerciseSessionId?.let {

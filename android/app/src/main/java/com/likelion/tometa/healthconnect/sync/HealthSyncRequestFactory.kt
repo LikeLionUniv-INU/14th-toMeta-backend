@@ -2,6 +2,8 @@ package com.likelion.tometa.healthconnect.sync
 
 import com.likelion.tometa.healthconnect.HealthConnectReader
 import com.likelion.tometa.healthconnect.sync.dto.HealthSyncRequestDto
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -20,20 +22,20 @@ class HealthSyncRequestFactory(
 
         val sleepRecords =
             healthConnectReader.readSleepRecords(
-                startTime = startTime,
-                endTime = endTime
+                startTime,
+                endTime
             )
 
         val heartRateRecords =
             healthConnectReader.readHeartRateRecords(
-                startTime = startTime,
-                endTime = endTime
+                startTime,
+                endTime
             )
 
         val exerciseRecords =
             healthConnectReader.readExerciseRecords(
-                startTime = startTime,
-                endTime = endTime
+                startTime,
+                endTime
             )
 
         val dailySteps =
@@ -44,32 +46,35 @@ class HealthSyncRequestFactory(
                 zoneId = zoneId
             )
 
-        val records = buildList {
+        return withContext(Dispatchers.Default) {
 
-            addAll(
-                sleepRecords.map(
-                    HealthSyncMapper::fromSleep
+            val records = buildList {
+
+                addAll(
+                    sleepRecords.map(
+                        HealthSyncMapper::fromSleep
+                    )
                 )
-            )
 
-            addAll(
-                heartRateRecords.map(
-                    HealthSyncMapper::fromHeartRate
+                addAll(
+                    heartRateRecords.map(
+                        HealthSyncMapper::fromHeartRate
+                    )
                 )
-            )
 
-            addAll(
-                exerciseRecords.map(
-                    HealthSyncMapper::fromExercise
+                addAll(
+                    exerciseRecords.map(
+                        HealthSyncMapper::fromExercise
+                    )
+                )
+            }
+
+            HealthSyncRequestDto(
+                records = records,
+                dailySteps = dailySteps.map(
+                    HealthSyncMapper::fromDailySteps
                 )
             )
         }
-
-        return HealthSyncRequestDto(
-            records = records,
-            dailySteps = dailySteps.map(
-                HealthSyncMapper::fromDailySteps
-            )
-        )
     }
 }

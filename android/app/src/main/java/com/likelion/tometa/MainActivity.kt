@@ -26,8 +26,9 @@ import com.likelion.tometa.healthconnect.HealthConnectManager
 import com.likelion.tometa.healthconnect.HealthConnectPermissions
 import com.likelion.tometa.healthconnect.HealthConnectReader
 import com.likelion.tometa.healthconnect.sync.HealthSyncRequestFactory
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.ZoneId
@@ -276,19 +277,18 @@ class MainActivity : ComponentActivity() {
                                         referenceTime
 
                                     val request =
-                                        healthSyncRequestFactory
-                                            .create(
-                                                startTime = startTime,
-                                                endTime = endTime,
-                                                startDate = startDate,
-                                                endDateExclusive = endDateExclusive,
-                                                zoneId = zoneId
-                                            )
+                                        healthSyncRequestFactory.create(
+                                            startTime = startTime,
+                                            endTime = endTime,
+                                            startDate = startDate,
+                                            endDateExclusive = endDateExclusive,
+                                            zoneId = zoneId
+                                        )
 
                                     val json =
-                                        Json.encodeToString(
-                                            request
-                                        )
+                                        withContext(Dispatchers.Default) {
+                                            Json.encodeToString(request)
+                                        }
 
                                     healthDataText =
                                         """
