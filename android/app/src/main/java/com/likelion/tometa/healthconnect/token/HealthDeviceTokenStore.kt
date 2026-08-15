@@ -50,22 +50,27 @@ class HealthDeviceTokenStore(
                 )
             )
 
-        preferences.edit()
-            .putString(
-                ENCRYPTED_TOKEN_KEY,
-                Base64.encodeToString(
-                    encryptedToken,
-                    Base64.NO_WRAP
+        val saved =
+            preferences.edit()
+                .putString(
+                    ENCRYPTED_TOKEN_KEY,
+                    Base64.encodeToString(
+                        encryptedToken,
+                        Base64.NO_WRAP
+                    )
                 )
-            )
-            .putString(
-                IV_KEY,
-                Base64.encodeToString(
-                    cipher.iv,
-                    Base64.NO_WRAP
+                .putString(
+                    IV_KEY,
+                    Base64.encodeToString(
+                        cipher.iv,
+                        Base64.NO_WRAP
+                    )
                 )
-            )
-            .commit()
+                .commit()
+
+        check(saved) {
+            "healthDeviceToken 저장에 실패했습니다."
+        }
     }
 
     suspend fun getToken(): String? =
@@ -137,14 +142,19 @@ class HealthDeviceTokenStore(
     suspend fun clearToken() =
         withContext(Dispatchers.IO) {
 
-            preferences.edit()
-                .remove(
-                    ENCRYPTED_TOKEN_KEY
-                )
-                .remove(
-                    IV_KEY
-                )
-                .commit()
+            val cleared =
+                preferences.edit()
+                    .remove(
+                        ENCRYPTED_TOKEN_KEY
+                    )
+                    .remove(
+                        IV_KEY
+                    )
+                    .commit()
+
+            check(cleared) {
+                "healthDeviceToken 삭제에 실패했습니다."
+            }
         }
 
     private fun getOrCreateSecretKey(): SecretKey =
