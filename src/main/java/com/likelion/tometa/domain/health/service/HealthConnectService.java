@@ -1,10 +1,15 @@
 package com.likelion.tometa.domain.health.service;
 
+import com.likelion.tometa.domain.health.code.HealthErrorCode;
 import com.likelion.tometa.domain.health.dto.request.HealthConnectionRequestDto;
+import com.likelion.tometa.domain.health.dto.request.HealthRawRecordRequestDto;
+import com.likelion.tometa.domain.health.dto.request.HealthSyncRequestDto;
 import com.likelion.tometa.domain.health.dto.response.HealthConnectStatusResponseDto;
 import com.likelion.tometa.domain.health.dto.response.HealthConnectionResponseDto;
 import com.likelion.tometa.domain.health.entity.HealthConnection;
+import com.likelion.tometa.domain.health.entity.HealthRawRecord;
 import com.likelion.tometa.domain.health.repository.HealthConnectionRepository;
+import com.likelion.tometa.domain.health.repository.HealthRawRecordRepository;
 import com.likelion.tometa.domain.health.support.HealthDeviceTokenProvider;
 import com.likelion.tometa.domain.user.code.UserErrorCode;
 import com.likelion.tometa.domain.user.entity.AnonymousSession;
@@ -26,6 +31,7 @@ public class HealthConnectService {
 
     private final AnonymousSessionRepository anonymousSessionRepository;
     private final HealthConnectionRepository healthConnectionRepository;
+    private final HealthRawRecordRepository healthRawRecordRepository;
     private final UserRepository userRepository;
     private final AnonymousSessionTokenProvider anonymousSessionTokenProvider;
     private final HealthDeviceTokenProvider healthDeviceTokenProvider;
@@ -75,6 +81,63 @@ public class HealthConnectService {
         session.touch();
 
         return new HealthConnectStatusResponseDto(connected, lastSyncedAt);
+    }
+
+    @Transactional
+    public void sync(HealthSyncRequestDto request, String authorizationHeader) {
+        HealthConnection connection = getValidHealthConnection(authorizationHeader);
+
+        for (HealthRawRecordRequestDto record : request.records()) {
+            Optional<HealthRawRecord> existingRecord =
+                    healthRawRecordRepository.findByHealthConnection_IdAndHcRecordId(
+                            connection.getId(),
+                            record.hcRecordId()
+                    );
+
+            if (existingRecord.isPresent()) {
+                existingRecord.get().updatePayload(
+                        record.startTime(),
+                        record.endTime(),
+                        record.payload()
+                );
+                continue;
+            }
+
+            HealthRawRecord healthRawRecord = HealthRawRecord.builder()
+                    .healthConnection(connection)
+                    .hcRecordId(record.hcRecordId())
+                    .recordType(record.recordType())
+                    .startTime(record.startTime())
+                    .endTime(record.endTime())
+                    .payload(record.payload())
+                    .build();
+
+            healthRawRecordRepository.save(healthRawRecord);
+        }
+
+        connection.markSynced();
+    }
+
+    private HealthConnection getValidHealthConnection(String authorizationHeader) {
+        String deviceToken = extractBearerToken(authorizationHeader);
+        String tokenHash = healthDeviceTokenProvider.hash(deviceToken);
+
+        return healthConnectionRepository.findByDeviceTokenHashAndRevokedAtIsNull(tokenHash)
+                .orElseThrow(() -> new GeneralException(HealthErrorCode.INVALID_HEALTH_DEVICE_TOKEN));
+    }
+
+    private String extractBearerToken(String authorizationHeader) {
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
+            throw new GeneralException(HealthErrorCode.INVALID_HEALTH_DEVICE_TOKEN);
+        }
+
+        String token = authorizationHeader.substring(7).trim();
+
+        if (token.isBlank()) {
+            throw new GeneralException(HealthErrorCode.INVALID_HEALTH_DEVICE_TOKEN);
+        }
+
+        return token;
     }
 
     private AnonymousSession getValidSession(String sessionToken) {
