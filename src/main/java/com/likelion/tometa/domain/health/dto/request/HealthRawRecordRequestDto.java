@@ -31,4 +31,9 @@ public record HealthRawRecordRequestDto(
     public boolean isValidTimeRange() {
         return startTime == null || endTime == null || !endTime.isBefore(startTime);
     }
+
+    @AssertTrue(message = "Health Connect 원본 데이터는 JSON Object 형식이어야 합니다.")
+    public boolean isPayloadObject() {
+        return payload == null || payload.isObject();
+    }
 }
