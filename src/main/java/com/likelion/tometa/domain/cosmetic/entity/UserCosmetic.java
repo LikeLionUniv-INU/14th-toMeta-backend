@@ -38,9 +38,6 @@ public class UserCosmetic extends BaseTimeEntity {
     @Column(name = "custom_name", length = 100)
     private String customName;
 
-    @Column(name = "usage_time", length = 20)
-    private String usageTime;
-
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
@@ -48,18 +45,15 @@ public class UserCosmetic extends BaseTimeEntity {
     private UserCosmetic(
             User user,
             CosmeticProduct cosmeticProduct,
-            String customName,
-            String usageTime
+            String customName
     ) {
         this.user = user;
         this.cosmeticProduct = cosmeticProduct;
         this.customName = customName;
-        this.usageTime = usageTime;
     }
 
-    public void update(String customName, String usageTime) {
+    public void updateCustomName(String customName) {
         this.customName = customName;
-        this.usageTime = usageTime;
     }
 
     public void softDelete() {

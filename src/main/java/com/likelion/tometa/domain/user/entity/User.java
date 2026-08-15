@@ -8,7 +8,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 
 @Getter
 @Entity
@@ -33,12 +32,6 @@ public class User extends BaseTimeEntity {
     @Column(name = "skin_type", length = 30)
     private String skinType;
 
-    @Column(name = "allow_notification", nullable = false)
-    private boolean allowNotification;
-
-    @Column(name = "notification_time")
-    private LocalTime notificationTime;
-
     @Column(name = "profile_completed_at")
     private LocalDateTime profileCompletedAt;
 
@@ -47,38 +40,36 @@ public class User extends BaseTimeEntity {
             String nickname,
             String gender,
             String ageGroup,
-            String skinType,
-            boolean allowNotification,
-            LocalTime notificationTime
+            String skinType
     ) {
         this.nickname = nickname;
         this.gender = gender;
         this.ageGroup = ageGroup;
         this.skinType = skinType;
-        this.allowNotification = allowNotification;
-        this.notificationTime =
-                allowNotification ? notificationTime : null;
     }
 
     public void completeProfile(
             String nickname,
             String gender,
             String ageGroup,
-            String skinType,
-            boolean allowNotification,
-            LocalTime notificationTime
+            String skinType
     ) {
         this.nickname = nickname;
         this.gender = gender;
         this.ageGroup = ageGroup;
         this.skinType = skinType;
-        this.allowNotification = allowNotification;
-        this.notificationTime = allowNotification ? notificationTime : null;
         this.profileCompletedAt = LocalDateTime.now();
     }
 
-    public void updateNotification(boolean allowNotification, LocalTime notificationTime) {
-        this.allowNotification = allowNotification;
-        this.notificationTime = allowNotification ? notificationTime : null;
+    public void updateProfile(
+            String nickname,
+            String gender,
+            String ageGroup,
+            String skinType
+    ) {
+        this.nickname = nickname;
+        this.gender = gender;
+        this.ageGroup = ageGroup;
+        this.skinType = skinType;
     }
 }

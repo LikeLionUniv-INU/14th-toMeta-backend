@@ -12,6 +12,7 @@ import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.entity.UserConsent;
 import com.likelion.tometa.domain.user.repository.AnonymousSessionRepository;
 import com.likelion.tometa.domain.user.repository.UserConsentRepository;
+import com.likelion.tometa.domain.user.repository.UserNotificationSettingRepository;
 import com.likelion.tometa.domain.user.repository.UserRepository;
 import com.likelion.tometa.domain.user.support.AnonymousSessionTokenProvider;
 import com.likelion.tometa.global.config.AnonymousSessionProperties;
@@ -31,6 +32,7 @@ public class OnboardingService {
     private final UserConsentRepository userConsentRepository;
     private final AnonymousSessionRepository anonymousSessionRepository;
     private final HealthConnectionRepository healthConnectionRepository;
+    private final UserNotificationSettingRepository userNotificationSettingRepository;
     private final AnonymousSessionTokenProvider tokenProvider;
     private final AnonymousSessionProperties sessionProperties;
 
@@ -64,9 +66,16 @@ public class OnboardingService {
         boolean healthConnectLinked = healthConnectionRepository
                 .existsByUser_IdAndRevokedAtIsNull(user.getId());
 
+        boolean notificationSettingsCompleted = userNotificationSettingRepository
+                .existsByUser_Id(user.getId());
+
         session.touch();
 
-        return new OnboardingStatusResponseDto(profileCompleted, healthConnectLinked);
+        return new OnboardingStatusResponseDto(
+                profileCompleted,
+                healthConnectLinked,
+                notificationSettingsCompleted
+        );
     }
 
     private void validateRequiredConsents(ConsentRequestDto request) {
