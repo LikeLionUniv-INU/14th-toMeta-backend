@@ -90,6 +90,12 @@ class CosmeticSetConcurrencyIntegrationTest {
         transactionTemplate = new TransactionTemplate(transactionManager);
 
         transactionTemplate.executeWithoutResult(status -> {
+            cosmeticSetItemRepository.deleteAllInBatch();
+            cosmeticSetRepository.deleteAllInBatch();
+            userCosmeticRepository.deleteAllInBatch();
+            cosmeticProductRepository.deleteAllInBatch();
+            userRepository.deleteAllInBatch();
+
             user = userRepository.save(User.builder().build());
 
             List<CosmeticProduct> products = cosmeticProductRepository.saveAll(List.of(
@@ -207,6 +213,21 @@ class CosmeticSetConcurrencyIntegrationTest {
             }
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void deleteCosmeticSet_removesItemsAndOwnedSet() {
+        transactionTemplate.executeWithoutResult(status -> cosmeticSetService.updateCosmeticSet(
+                cosmeticSetId,
+                itemsUpdateRequest(firstUserCosmeticIds),
+                FIRST_SESSION_TOKEN
+        ));
+        assertEquals(2L, cosmeticSetItemRepository.count());
+
+        cosmeticSetService.deleteCosmeticSet(cosmeticSetId, FIRST_SESSION_TOKEN);
+
+        assertFalse(cosmeticSetRepository.existsById(cosmeticSetId));
+        assertEquals(0L, cosmeticSetItemRepository.count());
     }
 
     private CosmeticSetUpdateRequestDto itemsUpdateRequest(List<Long> userCosmeticIds) {

@@ -291,8 +291,10 @@ class CosmeticSetServiceTest {
 
         assertEquals("진정 꿀조합", cosmeticSet.getName());
         assertSame(CosmeticSetUsageTime.BOTH, cosmeticSet.getUsageTime());
-        verify(cosmeticSetItemRepository).deleteAllByCosmeticSet(cosmeticSet);
-        verify(cosmeticSetItemRepository).saveAll(argThat(savedItems -> {
+        InOrder itemReplacementOrder = inOrder(cosmeticSetItemRepository);
+        itemReplacementOrder.verify(cosmeticSetItemRepository)
+                .deleteAllByCosmeticSet(cosmeticSet);
+        itemReplacementOrder.verify(cosmeticSetItemRepository).saveAll(argThat(savedItems -> {
             List<CosmeticSetItem> items = StreamSupport
                     .stream(savedItems.spliterator(), false)
                     .toList();
@@ -412,6 +414,72 @@ class CosmeticSetServiceTest {
         );
 
         assertSame(CosmeticErrorCode.COSMETIC_SET_ITEMS_REQUIRED, exception.getErrorCode());
+        verifyNoInteractions(userCosmeticRepository, cosmeticSetItemRepository);
+    }
+
+    @Test
+    void updateCosmeticSet_updatesOnlyUsageTimeWithoutReplacingItems() {
+        CosmeticSetUpdateRequestDto request = new CosmeticSetUpdateRequestDto(
+                null,
+                "night",
+                null
+        );
+        CosmeticSet cosmeticSet = cosmeticSet("기존 세트", CosmeticSetUsageTime.MORNING);
+
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(cosmeticSetRepository.findByIdAndUser(7L, user))
+                .thenReturn(Optional.of(cosmeticSet));
+
+        cosmeticSetService.updateCosmeticSet(7L, request, SESSION_TOKEN);
+
+        assertEquals("기존 세트", cosmeticSet.getName());
+        assertSame(CosmeticSetUsageTime.NIGHT, cosmeticSet.getUsageTime());
+        verifyNoInteractions(userCosmeticRepository, cosmeticSetItemRepository);
+    }
+
+    @Test
+    void updateCosmeticSet_rejectsDuplicateCosmeticIds() {
+        CosmeticSetUpdateRequestDto request = new CosmeticSetUpdateRequestDto(
+                null,
+                null,
+                List.of(11L, 11L, 12L)
+        );
+        CosmeticSet cosmeticSet = cosmeticSet("기존 세트", CosmeticSetUsageTime.MORNING);
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(cosmeticSetRepository.findByIdAndUser(7L, user))
+                .thenReturn(Optional.of(cosmeticSet));
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> cosmeticSetService.updateCosmeticSet(7L, request, SESSION_TOKEN)
+        );
+
+        assertSame(CosmeticErrorCode.COSMETIC_SET_DUPLICATE_ITEM, exception.getErrorCode());
+        assertEquals("기존 세트", cosmeticSet.getName());
+        assertSame(CosmeticSetUsageTime.MORNING, cosmeticSet.getUsageTime());
+        verifyNoInteractions(userCosmeticRepository, cosmeticSetItemRepository);
+    }
+
+    @Test
+    void updateCosmeticSet_rejectsNonPositiveCosmeticId() {
+        CosmeticSetUpdateRequestDto request = new CosmeticSetUpdateRequestDto(
+                null,
+                null,
+                List.of(11L, -1L)
+        );
+        CosmeticSet cosmeticSet = cosmeticSet("기존 세트", CosmeticSetUsageTime.MORNING);
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(cosmeticSetRepository.findByIdAndUser(7L, user))
+                .thenReturn(Optional.of(cosmeticSet));
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> cosmeticSetService.updateCosmeticSet(7L, request, SESSION_TOKEN)
+        );
+
+        assertSame(GlobalErrorCode.BAD_REQUEST, exception.getErrorCode());
+        assertEquals("기존 세트", cosmeticSet.getName());
+        assertSame(CosmeticSetUsageTime.MORNING, cosmeticSet.getUsageTime());
         verifyNoInteractions(userCosmeticRepository, cosmeticSetItemRepository);
     }
 
