@@ -4,10 +4,14 @@ import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetCreateRequestDto;
 import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetUpdateRequestDto;
 import com.likelion.tometa.domain.cosmetic.dto.response.CosmeticSetCreateResponseDto;
+import com.likelion.tometa.domain.cosmetic.dto.response.CosmeticSetDetailResponseDto;
+import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
+import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSetItem;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
 import com.likelion.tometa.domain.cosmetic.enums.CosmeticSetUsageTime;
+import com.likelion.tometa.domain.cosmetic.repository.CosmeticIngredientRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
@@ -23,6 +27,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static com.likelion.tometa.domain.cosmetic.constant.CosmeticSetPolicy.MIN_ITEM_COUNT;
 
@@ -34,6 +39,7 @@ public class CosmeticSetService {
     private final UserCosmeticRepository userCosmeticRepository;
     private final CosmeticSetRepository cosmeticSetRepository;
     private final CosmeticSetItemRepository cosmeticSetItemRepository;
+    private final CosmeticIngredientRepository cosmeticIngredientRepository;
 
     @Transactional
     public CosmeticSetCreateResponseDto createCosmeticSet(
@@ -66,6 +72,34 @@ public class CosmeticSetService {
         cosmeticSetItemRepository.saveAll(items);
 
         return new CosmeticSetCreateResponseDto(cosmeticSet.getId());
+    }
+
+    @Transactional
+    public CosmeticSetDetailResponseDto getCosmeticSetDetail(
+            Long setId,
+            String sessionToken
+    ) {
+        User user = sessionUserResolver.resolve(sessionToken);
+        CosmeticSet cosmeticSet = cosmeticSetRepository
+                .findByIdAndUserForRead(setId, user)
+                .orElseThrow(() -> new GeneralException(
+                        CosmeticErrorCode.COSMETIC_SET_NOT_FOUND));
+
+        List<CosmeticSetItem> items = cosmeticSetItemRepository
+                .findAllActiveByCosmeticSetOrderByItemOrder(cosmeticSet);
+        Map<Long, List<String>> mainIngredientsByProductId =
+                findMainIngredientsByProductId(items);
+
+        List<CosmeticSetDetailResponseDto.Cosmetic> cosmetics = items.stream()
+                .map(item -> toDetailCosmetic(item, mainIngredientsByProductId))
+                .toList();
+
+        return new CosmeticSetDetailResponseDto(
+                cosmeticSet.getId(),
+                cosmeticSet.getName(),
+                cosmeticSet.getUsageTime().getValue(),
+                cosmetics
+        );
     }
 
     @Transactional
@@ -175,6 +209,51 @@ public class CosmeticSetService {
     private CosmeticSetUsageTime parseUsageTime(String usageTime) {
         return CosmeticSetUsageTime.from(usageTime)
                 .orElseThrow(() -> new GeneralException(GlobalErrorCode.BAD_REQUEST));
+    }
+
+    private Map<Long, List<String>> findMainIngredientsByProductId(
+            List<CosmeticSetItem> items
+    ) {
+        List<Long> cosmeticProductIds = items.stream()
+                .map(CosmeticSetItem::getUserCosmetic)
+                .map(UserCosmetic::getCosmeticProduct)
+                .map(CosmeticProduct::getId)
+                .distinct()
+                .toList();
+
+        if (cosmeticProductIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return cosmeticIngredientRepository
+                .findAllMainByCosmeticProductIds(cosmeticProductIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        ingredient -> ingredient.getCosmeticProduct().getId(),
+                        Collectors.mapping(
+                                CosmeticIngredient::getIngredientName,
+                                Collectors.toList()
+                        )
+                ));
+    }
+
+    private CosmeticSetDetailResponseDto.Cosmetic toDetailCosmetic(
+            CosmeticSetItem item,
+            Map<Long, List<String>> mainIngredientsByProductId
+    ) {
+        UserCosmetic userCosmetic = item.getUserCosmetic();
+        CosmeticProduct cosmeticProduct = userCosmetic.getCosmeticProduct();
+
+        return new CosmeticSetDetailResponseDto.Cosmetic(
+                userCosmetic.getId(),
+                cosmeticProduct.getProductName(),
+                userCosmetic.getCustomName(),
+                cosmeticProduct.getProductType(),
+                mainIngredientsByProductId.getOrDefault(
+                        cosmeticProduct.getId(),
+                        List.of()
+                )
+        );
     }
 
     private List<CosmeticSetItem> createItems(

@@ -3,6 +3,7 @@ package com.likelion.tometa.domain.cosmetic.controller;
 import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetCreateRequestDto;
 import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetUpdateRequestDto;
 import com.likelion.tometa.domain.cosmetic.dto.response.CosmeticSetCreateResponseDto;
+import com.likelion.tometa.domain.cosmetic.dto.response.CosmeticSetDetailResponseDto;
 import com.likelion.tometa.domain.cosmetic.service.CosmeticSetService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
 import com.likelion.tometa.global.response.ApiResponse;
@@ -12,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,6 +35,18 @@ public class CosmeticSetController {
     ) {
         CosmeticSetCreateResponseDto result = cosmeticSetService
                 .createCosmeticSet(request, sessionToken);
+
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/{setId}")
+    public ResponseEntity<ApiResponse<CosmeticSetDetailResponseDto>> getCosmeticSetDetail(
+            @PathVariable("setId") Long setId,
+            @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false)
+            String sessionToken
+    ) {
+        CosmeticSetDetailResponseDto result = cosmeticSetService
+                .getCosmeticSetDetail(setId, sessionToken);
 
         return ResponseEntity.ok(ApiResponse.success(result));
     }

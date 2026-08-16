@@ -4,7 +4,9 @@ import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetCreateRequestDto;
 import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetUpdateRequestDto;
 import com.likelion.tometa.domain.cosmetic.dto.response.CosmeticSetCreateResponseDto;
+import com.likelion.tometa.domain.cosmetic.dto.response.CosmeticSetDetailResponseDto;
 import com.likelion.tometa.domain.cosmetic.service.CosmeticSetService;
+import com.likelion.tometa.domain.user.code.UserErrorCode;
 import com.likelion.tometa.global.code.GlobalErrorCode;
 import com.likelion.tometa.global.exception.GeneralException;
 import com.likelion.tometa.global.exception.GlobalExceptionHandler;
@@ -19,6 +21,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,6 +32,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -86,6 +91,140 @@ class CosmeticSetControllerTest {
                 eq("session-token")
         );
         assertEquals("진정템", requestCaptor.getValue().name());
+    }
+
+    @Test
+    void getCosmeticSetDetail_returnsSetAndCosmetics() throws Exception {
+        CosmeticSetDetailResponseDto response = new CosmeticSetDetailResponseDto(
+                7L,
+                "진정 꿀조합",
+                "morning",
+                List.of(
+                        new CosmeticSetDetailResponseDto.Cosmetic(
+                                12L,
+                                "아누아 어성초 77% 진정 토너",
+                                null,
+                                "skin_toner",
+                                List.of("어성초")
+                        ),
+                        new CosmeticSetDetailResponseDto.Cosmetic(
+                                15L,
+                                "토리든 다이브인 저분자 히알루론산 세럼",
+                                null,
+                                "serum",
+                                List.of("히알루론산")
+                        )
+                )
+        );
+        when(cosmeticSetService.getCosmeticSetDetail(7L, "session-token"))
+                .thenReturn(response);
+
+        mockMvc.perform(get("/api/cosmetic-sets/{setId}", 7L)
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": true,
+                          "code": "COMMON_200",
+                          "message": "요청에 성공했습니다.",
+                          "result": {
+                            "setId": 7,
+                            "name": "진정 꿀조합",
+                            "usageTime": "morning",
+                            "cosmetics": [
+                              {
+                                "userCosmeticId": 12,
+                                "productName": "아누아 어성초 77% 진정 토너",
+                                "customName": null,
+                                "productType": "skin_toner",
+                                "mainIngredients": ["어성초"]
+                              },
+                              {
+                                "userCosmeticId": 15,
+                                "productName": "토리든 다이브인 저분자 히알루론산 세럼",
+                                "customName": null,
+                                "productType": "serum",
+                                "mainIngredients": ["히알루론산"]
+                              }
+                            ]
+                          }
+                        }
+                        """));
+
+        verify(cosmeticSetService).getCosmeticSetDetail(7L, "session-token");
+    }
+
+    @Test
+    void getCosmeticSetDetail_returnsUnauthorizedForInvalidSession() throws Exception {
+        doThrow(new GeneralException(UserErrorCode.INVALID_ANONYMOUS_SESSION))
+                .when(cosmeticSetService)
+                .getCosmeticSetDetail(7L, "invalid-token");
+
+        mockMvc.perform(get("/api/cosmetic-sets/{setId}", 7L)
+                        .cookie(new Cookie("anonymous_session", "invalid-token")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "USER_4011",
+                          "message": "유효하지 않거나 만료된 사용자 세션입니다.",
+                          "result": null
+                        }
+                        """));
+    }
+
+    @Test
+    void getCosmeticSetDetail_returnsUnauthorizedForMissingSession() throws Exception {
+        doThrow(new GeneralException(UserErrorCode.INVALID_ANONYMOUS_SESSION))
+                .when(cosmeticSetService)
+                .getCosmeticSetDetail(7L, null);
+
+        mockMvc.perform(get("/api/cosmetic-sets/{setId}", 7L))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "USER_4011",
+                          "message": "유효하지 않거나 만료된 사용자 세션입니다.",
+                          "result": null
+                        }
+                        """));
+    }
+
+    @Test
+    void getCosmeticSetDetail_returnsNotFoundForMissingOrUnownedSet() throws Exception {
+        doThrow(new GeneralException(CosmeticErrorCode.COSMETIC_SET_NOT_FOUND))
+                .when(cosmeticSetService)
+                .getCosmeticSetDetail(99L, "session-token");
+
+        mockMvc.perform(get("/api/cosmetic-sets/{setId}", 99L)
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "COSMETIC_SET_4041",
+                          "message": "화장품 세트를 찾을 수 없습니다.",
+                          "result": null
+                        }
+                        """));
+    }
+
+    @Test
+    void getCosmeticSetDetail_returnsBadRequestForNonNumericSetId() throws Exception {
+        mockMvc.perform(get("/api/cosmetic-sets/abc")
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "COMMON_400",
+                          "message": "잘못된 요청입니다.",
+                          "result": null
+                        }
+                        """));
+
+        verify(cosmeticSetService, never()).getCosmeticSetDetail(any(), any());
     }
 
     @Test
