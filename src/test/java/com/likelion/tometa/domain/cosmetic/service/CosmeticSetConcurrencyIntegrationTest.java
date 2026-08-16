@@ -16,10 +16,12 @@ import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,11 +34,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.when;
 
 @DataJpaTest(properties = {
@@ -53,7 +58,7 @@ class CosmeticSetConcurrencyIntegrationTest {
     @Autowired
     private CosmeticSetService cosmeticSetService;
 
-    @Autowired
+    @MockitoSpyBean
     private CosmeticSetRepository cosmeticSetRepository;
 
     @Autowired
@@ -128,14 +133,25 @@ class CosmeticSetConcurrencyIntegrationTest {
     void concurrentPatchRequests_areSerializedByCosmeticSetLock() throws Exception {
         CountDownLatch firstPatchReplacedItems = new CountDownLatch(1);
         CountDownLatch releaseFirstPatch = new CountDownLatch(1);
-        CountDownLatch secondPatchStarted = new CountDownLatch(1);
+        CountDownLatch secondLockQueryEntered = new CountDownLatch(1);
         CountDownLatch secondPatchReplacedItems = new CountDownLatch(1);
+        AtomicInteger lockQueryInvocationCount = new AtomicInteger();
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
         Future<?> firstPatch = null;
         Future<?> secondPatch = null;
 
         try {
+            Answer<?> repositoryDelegate = mockingDetails(cosmeticSetRepository)
+                    .getMockCreationSettings()
+                    .getDefaultAnswer();
+            doAnswer(invocation -> {
+                if (lockQueryInvocationCount.incrementAndGet() == 2) {
+                    secondLockQueryEntered.countDown();
+                }
+                return repositoryDelegate.answer(invocation);
+            }).when(cosmeticSetRepository).findByIdAndUser(cosmeticSetId, user);
+
             firstPatch = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
                 cosmeticSetService.updateCosmeticSet(
                         cosmeticSetId,
@@ -146,10 +162,16 @@ class CosmeticSetConcurrencyIntegrationTest {
                 await(releaseFirstPatch);
             }));
 
-            assertTrue(firstPatchReplacedItems.await(2, TimeUnit.SECONDS));
+            boolean firstPatchCompletedUpdate = firstPatchReplacedItems.await(
+                    2,
+                    TimeUnit.SECONDS
+            );
+            if (!firstPatchCompletedUpdate && firstPatch.isDone()) {
+                firstPatch.get(1, TimeUnit.SECONDS);
+            }
+            assertTrue(firstPatchCompletedUpdate);
 
             secondPatch = executor.submit(() -> {
-                secondPatchStarted.countDown();
                 transactionTemplate.executeWithoutResult(status -> {
                     cosmeticSetService.updateCosmeticSet(
                             cosmeticSetId,
@@ -160,7 +182,7 @@ class CosmeticSetConcurrencyIntegrationTest {
                 });
             });
 
-            assertTrue(secondPatchStarted.await(2, TimeUnit.SECONDS));
+            assertTrue(secondLockQueryEntered.await(2, TimeUnit.SECONDS));
             assertFalse(secondPatchReplacedItems.await(500, TimeUnit.MILLISECONDS));
 
             releaseFirstPatch.countDown();
