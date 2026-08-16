@@ -2,6 +2,7 @@ package com.likelion.tometa.domain.cosmetic.controller;
 
 import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetCreateRequestDto;
+import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetUpdateRequestDto;
 import com.likelion.tometa.domain.cosmetic.dto.response.CosmeticSetCreateResponseDto;
 import com.likelion.tometa.domain.cosmetic.service.CosmeticSetService;
 import com.likelion.tometa.global.code.GlobalErrorCode;
@@ -19,6 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -26,6 +28,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -196,5 +199,89 @@ class CosmeticSetControllerTest {
                         """));
 
         verify(cosmeticSetService, never()).createCosmeticSet(any(), any());
+    }
+
+    @Test
+    void updateCosmeticSet_updatesOnlyProvidedFields() throws Exception {
+        mockMvc.perform(patch("/api/cosmetic-sets/7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(new Cookie("anonymous_session", "session-token"))
+                        .content("""
+                                {
+                                  "name": "  새 세트 이름  "
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": true,
+                          "code": "COMMON_200",
+                          "message": "요청에 성공했습니다.",
+                          "result": null
+                        }
+                        """));
+
+        ArgumentCaptor<CosmeticSetUpdateRequestDto> requestCaptor =
+                ArgumentCaptor.forClass(CosmeticSetUpdateRequestDto.class);
+        verify(cosmeticSetService).updateCosmeticSet(
+                eq(7L),
+                requestCaptor.capture(),
+                eq("session-token")
+        );
+        assertEquals("새 세트 이름", requestCaptor.getValue().name());
+        assertNull(requestCaptor.getValue().usageTime());
+        assertNull(requestCaptor.getValue().userCosmeticIds());
+    }
+
+    @Test
+    void updateCosmeticSet_returnsNotFoundForMissingSet() throws Exception {
+        doThrow(new GeneralException(CosmeticErrorCode.COSMETIC_SET_NOT_FOUND))
+                .when(cosmeticSetService)
+                .updateCosmeticSet(
+                        eq(99L),
+                        any(CosmeticSetUpdateRequestDto.class),
+                        eq("session-token")
+                );
+
+        mockMvc.perform(patch("/api/cosmetic-sets/99")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(new Cookie("anonymous_session", "session-token"))
+                        .content("""
+                                {
+                                  "usageTime": "night"
+                                }
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "COSMETIC_SET_4041",
+                          "message": "화장품 세트를 찾을 수 없습니다.",
+                          "result": null
+                        }
+                        """));
+    }
+
+    @Test
+    void updateCosmeticSet_rejectsBlankNameBeforeCallingService() throws Exception {
+        mockMvc.perform(patch("/api/cosmetic-sets/7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(new Cookie("anonymous_session", "session-token"))
+                        .content("""
+                                {
+                                  "name": "   "
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "COMMON_400",
+                          "message": "세트 이름은 필수입니다.",
+                          "result": null
+                        }
+                        """));
+
+        verify(cosmeticSetService, never()).updateCosmeticSet(any(), any(), any());
     }
 }
