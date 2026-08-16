@@ -2,6 +2,7 @@ package com.likelion.tometa.domain.cosmetic.service;
 
 import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetCreateRequestDto;
+import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetUpdateRequestDto;
 import com.likelion.tometa.domain.cosmetic.dto.response.CosmeticSetCreateResponseDto;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSetItem;
@@ -42,18 +43,10 @@ public class CosmeticSetService {
 
         validateUserCosmeticIds(userCosmeticIds);
         CosmeticSetUsageTime usageTime = parseUsageTime(request.usageTime());
-
-        List<UserCosmetic> userCosmetics = userCosmeticRepository
-                .findAllByIdInAndUserAndDeletedAtIsNull(userCosmeticIds, user);
-
-        if (userCosmetics.size() != userCosmeticIds.size()) {
-            throw new GeneralException(CosmeticErrorCode.USER_COSMETIC_NOT_FOUND);
-        }
-
-        Map<Long, UserCosmetic> userCosmeticById = new HashMap<>();
-        for (UserCosmetic userCosmetic : userCosmetics) {
-            userCosmeticById.put(userCosmetic.getId(), userCosmetic);
-        }
+        Map<Long, UserCosmetic> userCosmeticById = findUserCosmeticsById(
+                userCosmeticIds,
+                user
+        );
 
         CosmeticSet cosmeticSet = cosmeticSetRepository.save(
                 CosmeticSet.builder()
@@ -71,6 +64,78 @@ public class CosmeticSetService {
         cosmeticSetItemRepository.saveAll(items);
 
         return new CosmeticSetCreateResponseDto(cosmeticSet.getId());
+    }
+
+    @Transactional
+    public void updateCosmeticSet(
+            Long setId,
+            CosmeticSetUpdateRequestDto request,
+            String sessionToken
+    ) {
+        User user = sessionUserResolver.resolve(sessionToken);
+        CosmeticSet cosmeticSet = cosmeticSetRepository.findByIdAndUser(setId, user)
+                .orElseThrow(() -> new GeneralException(
+                        CosmeticErrorCode.COSMETIC_SET_NOT_FOUND));
+
+        validateUpdateRequest(request);
+
+        CosmeticSetUsageTime usageTime = request.usageTime() == null
+                ? null
+                : parseUsageTime(request.usageTime());
+        Map<Long, UserCosmetic> userCosmeticById = null;
+
+        if (request.userCosmeticIds() != null) {
+            validateUserCosmeticIds(request.userCosmeticIds());
+            userCosmeticById = findUserCosmeticsById(request.userCosmeticIds(), user);
+        }
+
+        if (request.name() != null) {
+            cosmeticSet.updateName(request.name());
+        }
+
+        if (usageTime != null) {
+            cosmeticSet.updateUsageTime(usageTime);
+        }
+
+        if (userCosmeticById != null) {
+            replaceItems(cosmeticSet, request.userCosmeticIds(), userCosmeticById);
+        }
+    }
+
+    private void validateUpdateRequest(CosmeticSetUpdateRequestDto request) {
+        if (request.name() == null
+                && request.usageTime() == null
+                && request.userCosmeticIds() == null) {
+            throw new GeneralException(GlobalErrorCode.BAD_REQUEST);
+        }
+    }
+
+    private void replaceItems(
+            CosmeticSet cosmeticSet,
+            List<Long> userCosmeticIds,
+            Map<Long, UserCosmetic> userCosmeticById
+    ) {
+        cosmeticSetItemRepository.deleteAllByCosmeticSet(cosmeticSet);
+        cosmeticSetItemRepository.saveAll(
+                createItems(cosmeticSet, userCosmeticIds, userCosmeticById));
+    }
+    
+    private Map<Long, UserCosmetic> findUserCosmeticsById(
+            List<Long> userCosmeticIds,
+            User user
+    ) {
+        List<UserCosmetic> userCosmetics = userCosmeticRepository
+                .findAllByIdInAndUserAndDeletedAtIsNull(userCosmeticIds, user);
+
+        if (userCosmetics.size() != userCosmeticIds.size()) {
+            throw new GeneralException(CosmeticErrorCode.USER_COSMETIC_NOT_FOUND);
+        }
+
+        Map<Long, UserCosmetic> userCosmeticById = new HashMap<>();
+        for (UserCosmetic userCosmetic : userCosmetics) {
+            userCosmeticById.put(userCosmetic.getId(), userCosmetic);
+        }
+        return userCosmeticById;
     }
 
     @Transactional

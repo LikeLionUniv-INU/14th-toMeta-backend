@@ -42,7 +42,11 @@ public class CosmeticSet extends BaseTimeEntity {
         this.usageTime = usageTime;
     }
 
-    public void update(String name) {
+    public void updateName(String name) {
         this.name = name;
+    }
+
+    public void updateUsageTime(CosmeticSetUsageTime usageTime) {
+        this.usageTime = usageTime;
     }
 }
