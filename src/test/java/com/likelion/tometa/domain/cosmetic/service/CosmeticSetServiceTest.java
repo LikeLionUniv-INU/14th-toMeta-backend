@@ -4,10 +4,14 @@ import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetCreateRequestDto;
 import com.likelion.tometa.domain.cosmetic.dto.request.CosmeticSetUpdateRequestDto;
 import com.likelion.tometa.domain.cosmetic.dto.response.CosmeticSetCreateResponseDto;
+import com.likelion.tometa.domain.cosmetic.dto.response.CosmeticSetDetailResponseDto;
+import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
+import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSetItem;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
 import com.likelion.tometa.domain.cosmetic.enums.CosmeticSetUsageTime;
+import com.likelion.tometa.domain.cosmetic.repository.CosmeticIngredientRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
@@ -57,6 +61,9 @@ class CosmeticSetServiceTest {
 
     @Mock
     private CosmeticSetItemRepository cosmeticSetItemRepository;
+
+    @Mock
+    private CosmeticIngredientRepository cosmeticIngredientRepository;
 
     @InjectMocks
     private CosmeticSetService cosmeticSetService;
@@ -256,6 +263,75 @@ class CosmeticSetServiceTest {
 
         assertSame(CosmeticErrorCode.USER_COSMETIC_NOT_FOUND, exception.getErrorCode());
         verifyNoInteractions(cosmeticSetRepository, cosmeticSetItemRepository);
+    }
+
+    @Test
+    void getCosmeticSetDetail_returnsItemsAndMainIngredientsInOrder() {
+        CosmeticSet cosmeticSet = cosmeticSet("진정 꿀조합", CosmeticSetUsageTime.MORNING);
+        ReflectionTestUtils.setField(cosmeticSet, "id", 7L);
+        CosmeticProduct toner = cosmeticProduct(
+                101L,
+                "아누아 어성초 77% 진정 토너",
+                "skin_toner"
+        );
+        CosmeticProduct serum = cosmeticProduct(
+                102L,
+                "토리든 다이브인 저분자 히알루론산 세럼",
+                "serum"
+        );
+        UserCosmetic tonerCosmetic = userCosmetic(12L, toner, null);
+        UserCosmetic serumCosmetic = userCosmetic(15L, serum, "수분 세럼");
+        List<CosmeticSetItem> items = List.of(
+                cosmeticSetItem(cosmeticSet, tonerCosmetic, 1),
+                cosmeticSetItem(cosmeticSet, serumCosmetic, 2)
+        );
+        List<CosmeticIngredient> ingredients = List.of(
+                cosmeticIngredient(toner, "어성초", 1),
+                cosmeticIngredient(toner, "판테놀", 2)
+        );
+
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(cosmeticSetRepository.findByIdAndUserForRead(7L, user))
+                .thenReturn(Optional.of(cosmeticSet));
+        when(cosmeticSetItemRepository
+                .findAllActiveByCosmeticSetOrderByItemOrder(cosmeticSet))
+                .thenReturn(items);
+        when(cosmeticIngredientRepository.findAllMainByCosmeticProductIds(
+                List.of(101L, 102L)
+        )).thenReturn(ingredients);
+
+        CosmeticSetDetailResponseDto result = cosmeticSetService
+                .getCosmeticSetDetail(7L, SESSION_TOKEN);
+
+        assertEquals(7L, result.setId());
+        assertEquals("진정 꿀조합", result.name());
+        assertEquals("morning", result.usageTime());
+        assertEquals(2, result.cosmetics().size());
+        assertEquals(12L, result.cosmetics().get(0).userCosmeticId());
+        assertEquals("아누아 어성초 77% 진정 토너",
+                result.cosmetics().get(0).productName());
+        assertEquals(null, result.cosmetics().get(0).customName());
+        assertEquals("skin_toner", result.cosmetics().get(0).productType());
+        assertEquals(List.of("어성초", "판테놀"),
+                result.cosmetics().get(0).mainIngredients());
+        assertEquals(15L, result.cosmetics().get(1).userCosmeticId());
+        assertEquals("수분 세럼", result.cosmetics().get(1).customName());
+        assertEquals(List.of(), result.cosmetics().get(1).mainIngredients());
+    }
+
+    @Test
+    void getCosmeticSetDetail_rejectsMissingOrUnownedSet() {
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(cosmeticSetRepository.findByIdAndUserForRead(99L, user))
+                .thenReturn(Optional.empty());
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> cosmeticSetService.getCosmeticSetDetail(99L, SESSION_TOKEN)
+        );
+
+        assertSame(CosmeticErrorCode.COSMETIC_SET_NOT_FOUND, exception.getErrorCode());
+        verifyNoInteractions(cosmeticSetItemRepository, cosmeticIngredientRepository);
     }
 
     @Test
@@ -564,6 +640,60 @@ class CosmeticSetServiceTest {
         UserCosmetic userCosmetic = mock(UserCosmetic.class);
         when(userCosmetic.getId()).thenReturn(id);
         return userCosmetic;
+    }
+
+    private UserCosmetic userCosmetic(
+            Long id,
+            CosmeticProduct cosmeticProduct,
+            String customName
+    ) {
+        UserCosmetic userCosmetic = UserCosmetic.builder()
+                .user(user)
+                .cosmeticProduct(cosmeticProduct)
+                .customName(customName)
+                .build();
+        ReflectionTestUtils.setField(userCosmetic, "id", id);
+        return userCosmetic;
+    }
+
+    private CosmeticProduct cosmeticProduct(
+            Long id,
+            String productName,
+            String productType
+    ) {
+        CosmeticProduct cosmeticProduct = CosmeticProduct.builder()
+                .createdByUser(user)
+                .sourceType("manual")
+                .productName(productName)
+                .productType(productType)
+                .build();
+        ReflectionTestUtils.setField(cosmeticProduct, "id", id);
+        return cosmeticProduct;
+    }
+
+    private CosmeticSetItem cosmeticSetItem(
+            CosmeticSet cosmeticSet,
+            UserCosmetic userCosmetic,
+            int itemOrder
+    ) {
+        return CosmeticSetItem.builder()
+                .cosmeticSet(cosmeticSet)
+                .userCosmetic(userCosmetic)
+                .itemOrder(itemOrder)
+                .build();
+    }
+
+    private CosmeticIngredient cosmeticIngredient(
+            CosmeticProduct cosmeticProduct,
+            String ingredientName,
+            int ingredientOrder
+    ) {
+        return CosmeticIngredient.builder()
+                .cosmeticProduct(cosmeticProduct)
+                .ingredientName(ingredientName)
+                .ingredientOrder(ingredientOrder)
+                .main(true)
+                .build();
     }
 
     private CosmeticSet cosmeticSet(

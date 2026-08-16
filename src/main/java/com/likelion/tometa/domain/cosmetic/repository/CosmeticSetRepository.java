@@ -17,6 +17,17 @@ public interface CosmeticSetRepository extends JpaRepository<CosmeticSet, Long> 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<CosmeticSet> findByIdAndUser(Long id, User user);
 
+    @Query("""
+            select cosmeticSet
+            from CosmeticSet cosmeticSet
+            where cosmeticSet.id = :id
+              and cosmeticSet.user = :user
+            """)
+    Optional<CosmeticSet> findByIdAndUserForRead(
+            @Param("id") Long id,
+            @Param("user") User user
+    );
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select item.cosmeticSet

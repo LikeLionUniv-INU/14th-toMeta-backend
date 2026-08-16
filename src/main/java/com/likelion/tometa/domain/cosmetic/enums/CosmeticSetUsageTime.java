@@ -15,6 +15,10 @@ public enum CosmeticSetUsageTime {
         this.value = value;
     }
 
+    public String getValue() {
+        return value;
+    }
+
     public static Optional<CosmeticSetUsageTime> from(String value) {
         return Arrays.stream(values())
                 .filter(usageTime -> usageTime.value.equals(value))

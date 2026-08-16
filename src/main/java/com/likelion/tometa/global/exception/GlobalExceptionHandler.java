@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -48,6 +49,29 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(errorCode.getStatus())
                 .body(ApiResponse.failure(errorCode.getCode(), errorMessage, null));
+    }
+
+    // PathVariable, RequestParam 등의 타입 변환 실패 처리
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatchException(
+            MethodArgumentTypeMismatchException e
+    ) {
+        GlobalErrorCode errorCode = GlobalErrorCode.BAD_REQUEST;
+
+        log.warn(
+                "Type mismatch. parameter: {}, value: {}, requiredType: {}",
+                e.getName(),
+                e.getValue(),
+                e.getRequiredType()
+        );
+
+        return ResponseEntity
+                .status(errorCode.getStatus())
+                .body(ApiResponse.failure(
+                        errorCode.getCode(),
+                        errorCode.getMessage(),
+                        null
+                ));
     }
 
     // 존재하지 않는 URL 또는 정적 리소스 요청 처리
