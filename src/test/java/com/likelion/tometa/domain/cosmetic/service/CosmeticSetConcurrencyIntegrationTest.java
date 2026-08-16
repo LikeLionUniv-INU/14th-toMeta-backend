@@ -48,7 +48,7 @@ import static org.mockito.Mockito.when;
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect"
 })
-@Import(CosmeticSetService.class)
+@Import({CosmeticSetService.class, UserCosmeticService.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class CosmeticSetConcurrencyIntegrationTest {
 
@@ -57,6 +57,9 @@ class CosmeticSetConcurrencyIntegrationTest {
 
     @Autowired
     private CosmeticSetService cosmeticSetService;
+
+    @Autowired
+    private UserCosmeticService userCosmeticService;
 
     @MockitoSpyBean
     private CosmeticSetRepository cosmeticSetRepository;
@@ -228,6 +231,60 @@ class CosmeticSetConcurrencyIntegrationTest {
 
         assertFalse(cosmeticSetRepository.existsById(cosmeticSetId));
         assertEquals(0L, cosmeticSetItemRepository.count());
+    }
+
+    @Test
+    void deleteUserCosmetic_removesSetWhenOneItemWouldRemain() {
+        transactionTemplate.executeWithoutResult(status -> cosmeticSetService.updateCosmeticSet(
+                cosmeticSetId,
+                itemsUpdateRequest(firstUserCosmeticIds),
+                FIRST_SESSION_TOKEN
+        ));
+
+        userCosmeticService.deleteUserCosmetic(
+                firstUserCosmeticIds.get(0),
+                FIRST_SESSION_TOKEN
+        );
+
+        assertFalse(cosmeticSetRepository.existsById(cosmeticSetId));
+        assertEquals(0L, cosmeticSetItemRepository.count());
+        assertTrue(userCosmeticRepository.findById(firstUserCosmeticIds.get(0))
+                .orElseThrow()
+                .isDeleted());
+    }
+
+    @Test
+    void deleteUserCosmetic_keepsSetWhenTwoItemsRemain() {
+        List<Long> threeUserCosmeticIds = List.of(
+                firstUserCosmeticIds.get(0),
+                firstUserCosmeticIds.get(1),
+                secondUserCosmeticIds.get(0)
+        );
+        transactionTemplate.executeWithoutResult(status -> cosmeticSetService.updateCosmeticSet(
+                cosmeticSetId,
+                itemsUpdateRequest(threeUserCosmeticIds),
+                FIRST_SESSION_TOKEN
+        ));
+
+        userCosmeticService.deleteUserCosmetic(
+                firstUserCosmeticIds.get(0),
+                FIRST_SESSION_TOKEN
+        );
+
+        assertTrue(cosmeticSetRepository.existsById(cosmeticSetId));
+        List<Long> remainingUserCosmeticIds = transactionTemplate.execute(status ->
+                cosmeticSetItemRepository.findAll().stream()
+                        .sorted(Comparator.comparing(CosmeticSetItem::getItemOrder))
+                        .map(item -> item.getUserCosmetic().getId())
+                        .toList()
+        );
+        assertEquals(
+                List.of(firstUserCosmeticIds.get(1), secondUserCosmeticIds.get(0)),
+                remainingUserCosmeticIds
+        );
+        assertTrue(userCosmeticRepository.findById(firstUserCosmeticIds.get(0))
+                .orElseThrow()
+                .isDeleted());
     }
 
     private CosmeticSetUpdateRequestDto itemsUpdateRequest(List<Long> userCosmeticIds) {
