@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -27,6 +28,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class RecordImageStorageService {
 
+    private static final int MAX_IMAGE_COUNT = 3;
     private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
 
     private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
@@ -45,22 +47,42 @@ public class RecordImageStorageService {
     private final S3Presigner s3Presigner;
     private final S3StorageProperties properties;
 
-    public RecordImageUploadUrlResponseDto issueUploadUrl(RecordImageUploadUrlRequestDto request, String sessionToken) {
+    public RecordImageUploadUrlResponseDto issueUploadUrl(
+            RecordImageUploadUrlRequestDto request,
+            String sessionToken
+    ) {
         User user = sessionUserResolver.resolve(sessionToken);
 
-        validateContentType(request.contentType());
-        validateFileSize(request.fileSize());
+        validateImageCount(request.images());
+        request.images().forEach(image -> {
+            validateContentType(image.contentType());
+            validateFileSize(image.fileSize());
+        });
 
-        String objectKey = createObjectKey(user.getId(), request.contentType());
         Duration expiration = Duration.ofMinutes(properties.presignedUploadExpirationMinutes());
         Instant expiresAt = Instant.now().plus(expiration);
+
+        List<RecordImageUploadUrlResponseDto.UploadInfo> uploads = request.images().stream()
+                .map(image -> createPresignedUploadUrl(user, image, expiration, expiresAt))
+                .toList();
+
+        return new RecordImageUploadUrlResponseDto(uploads);
+    }
+
+    private RecordImageUploadUrlResponseDto.UploadInfo createPresignedUploadUrl(
+            User user,
+            RecordImageUploadUrlRequestDto.ImageUploadRequest image,
+            Duration expiration,
+            Instant expiresAt
+    ) {
+        String objectKey = createObjectKey(user.getId(), image.contentType());
 
         try {
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                     .bucket(properties.bucket())
                     .key(objectKey)
-                    .contentType(request.contentType())
-                    .contentLength(request.fileSize())
+                    .contentType(image.contentType())
+                    .contentLength(image.fileSize())
                     .build();
 
             PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
@@ -68,17 +90,26 @@ public class RecordImageStorageService {
                     .putObjectRequest(putObjectRequest)
                     .build();
 
-            PresignedPutObjectRequest presignedRequest = s3Presigner.presignPutObject(presignRequest);
+            PresignedPutObjectRequest presignedRequest =
+                    s3Presigner.presignPutObject(presignRequest);
 
-            return new RecordImageUploadUrlResponseDto(
+            return new RecordImageUploadUrlResponseDto.UploadInfo(
                     presignedRequest.url().toString(),
                     objectKey,
                     "PUT",
-                    request.contentType(),
+                    image.contentType(),
                     expiresAt
             );
         } catch (SdkException e) {
-            throw new GeneralException(RecordImageErrorCode.PRESIGNED_URL_ISSUE_FAILED);
+            throw new GeneralException(
+                    RecordImageErrorCode.PRESIGNED_URL_ISSUE_FAILED
+            );
+        }
+    }
+
+    private void validateImageCount(List<RecordImageUploadUrlRequestDto.ImageUploadRequest> images) {
+        if (images == null || images.isEmpty() || images.size() > MAX_IMAGE_COUNT) {
+            throw new GeneralException(RecordImageErrorCode.INVALID_IMAGE_COUNT);
         }
     }
 
