@@ -119,7 +119,7 @@ public class CosmeticSetService {
         cosmeticSetItemRepository.saveAll(
                 createItems(cosmeticSet, userCosmeticIds, userCosmeticById));
     }
-
+    
     private Map<Long, UserCosmetic> findUserCosmeticsById(
             List<Long> userCosmeticIds,
             User user
@@ -136,6 +136,17 @@ public class CosmeticSetService {
             userCosmeticById.put(userCosmetic.getId(), userCosmetic);
         }
         return userCosmeticById;
+    
+    public void deleteCosmeticSet(Long setId, String sessionToken) {
+        User user = sessionUserResolver.resolve(sessionToken);
+
+        CosmeticSet cosmeticSet = cosmeticSetRepository
+                .findByIdAndUser(setId, user)
+                .orElseThrow(() -> new GeneralException(
+                        CosmeticErrorCode.COSMETIC_SET_NOT_FOUND));
+
+        cosmeticSetItemRepository.deleteAllByCosmeticSetId(setId);
+        cosmeticSetRepository.delete(cosmeticSet);
     }
 
     private void validateUserCosmeticIds(List<Long> userCosmeticIds) {

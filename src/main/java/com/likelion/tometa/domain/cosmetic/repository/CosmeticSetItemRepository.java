@@ -12,4 +12,7 @@ public interface CosmeticSetItemRepository extends JpaRepository<CosmeticSetItem
     @Modifying
     @Query("delete from CosmeticSetItem item where item.cosmeticSet = :cosmeticSet")
     void deleteAllByCosmeticSet(@Param("cosmeticSet") CosmeticSet cosmeticSet);
+
+    @Query("delete from CosmeticSetItem item where item.cosmeticSet.id = :cosmeticSetId")
+    void deleteAllByCosmeticSetId(@Param("cosmeticSetId") Long cosmeticSetId);
 }
