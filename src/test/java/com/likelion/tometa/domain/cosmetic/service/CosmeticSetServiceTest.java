@@ -19,11 +19,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -32,6 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -226,6 +230,40 @@ class CosmeticSetServiceTest {
 
         assertSame(CosmeticErrorCode.USER_COSMETIC_NOT_FOUND, exception.getErrorCode());
         verifyNoInteractions(cosmeticSetRepository, cosmeticSetItemRepository);
+    }
+
+    @Test
+    void deleteCosmeticSet_deletesItemsBeforeOwnedSet() {
+        CosmeticSet cosmeticSet = mock(CosmeticSet.class);
+
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(cosmeticSetRepository.findByIdAndUser(7L, user))
+                .thenReturn(Optional.of(cosmeticSet));
+
+        cosmeticSetService.deleteCosmeticSet(7L, SESSION_TOKEN);
+
+        InOrder deletionOrder = inOrder(
+                cosmeticSetItemRepository,
+                cosmeticSetRepository
+        );
+        deletionOrder.verify(cosmeticSetItemRepository).deleteAllByCosmeticSetId(7L);
+        deletionOrder.verify(cosmeticSetRepository).delete(cosmeticSet);
+    }
+
+    @Test
+    void deleteCosmeticSet_rejectsMissingOrUnownedSet() {
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(cosmeticSetRepository.findByIdAndUser(7L, user))
+                .thenReturn(Optional.empty());
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> cosmeticSetService.deleteCosmeticSet(7L, SESSION_TOKEN)
+        );
+
+        assertSame(CosmeticErrorCode.COSMETIC_SET_NOT_FOUND, exception.getErrorCode());
+        verifyNoInteractions(cosmeticSetItemRepository);
+        verify(cosmeticSetRepository, never()).delete(any(CosmeticSet.class));
     }
 
     private UserCosmetic userCosmetic(Long id) {

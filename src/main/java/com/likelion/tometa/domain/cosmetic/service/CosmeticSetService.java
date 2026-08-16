@@ -73,6 +73,19 @@ public class CosmeticSetService {
         return new CosmeticSetCreateResponseDto(cosmeticSet.getId());
     }
 
+    @Transactional
+    public void deleteCosmeticSet(Long setId, String sessionToken) {
+        User user = sessionUserResolver.resolve(sessionToken);
+
+        CosmeticSet cosmeticSet = cosmeticSetRepository
+                .findByIdAndUser(setId, user)
+                .orElseThrow(() -> new GeneralException(
+                        CosmeticErrorCode.COSMETIC_SET_NOT_FOUND));
+
+        cosmeticSetItemRepository.deleteAllByCosmeticSetId(setId);
+        cosmeticSetRepository.delete(cosmeticSet);
+    }
+
     private void validateUserCosmeticIds(List<Long> userCosmeticIds) {
         if (userCosmeticIds == null || userCosmeticIds.isEmpty()) {
             throw new GeneralException(CosmeticErrorCode.COSMETIC_SET_ITEMS_REQUIRED);
