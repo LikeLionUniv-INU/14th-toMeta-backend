@@ -4,9 +4,13 @@ import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
+import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
+import com.likelion.tometa.domain.cosmetic.enums.CosmeticSetUsageTime;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticIngredientRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticProductRepository;
+import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
+import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
@@ -34,6 +38,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,6 +58,12 @@ class UserCosmeticServiceTest {
 
     @Mock
     private UserCosmeticRepository userCosmeticRepository;
+
+    @Mock
+    private CosmeticSetRepository cosmeticSetRepository;
+
+    @Mock
+    private CosmeticSetItemRepository cosmeticSetItemRepository;
 
     @InjectMocks
     private UserCosmeticService userCosmeticService;
@@ -160,26 +172,80 @@ class UserCosmeticServiceTest {
     }
 
     @Test
-    void deleteUserCosmetic_softDeletesOwnedActiveCosmetic() {
-        CosmeticProduct cosmeticProduct = CosmeticProduct.builder()
-                .createdByUser(user)
-                .sourceType("manual")
-                .productName("진정 세럼")
-                .productType("serum")
-                .build();
-        UserCosmetic userCosmetic = UserCosmetic.builder()
-                .user(user)
-                .cosmeticProduct(cosmeticProduct)
-                .build();
+    void deleteUserCosmetic_softDeletesOwnedActiveCosmeticNotIncludedInSet() {
+        UserCosmetic userCosmetic = userCosmetic("진정 세럼");
 
         when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
         when(userCosmeticRepository.findByIdAndUserAndDeletedAtIsNull(1L, user))
                 .thenReturn(Optional.of(userCosmetic));
+        when(cosmeticSetRepository.findAllContainingUserCosmeticForUpdate(
+                userCosmetic,
+                user
+        )).thenReturn(List.of());
 
         userCosmeticService.deleteUserCosmetic(1L, SESSION_TOKEN);
 
         assertTrue(userCosmetic.isDeleted());
         assertNotNull(userCosmetic.getDeletedAt());
+        verifyNoInteractions(cosmeticSetItemRepository);
+    }
+
+    @Test
+    void deleteUserCosmetic_deletesSetWhenOneItemWouldRemain() {
+        UserCosmetic deletedCosmetic = userCosmetic("삭제할 토너");
+        CosmeticSet cosmeticSet = cosmeticSet("두 단계 루틴");
+        CosmeticSetItemRepository.CosmeticSetItemCount itemCount =
+                cosmeticSetItemCount(cosmeticSet, 2L);
+
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(userCosmeticRepository.findByIdAndUserAndDeletedAtIsNull(1L, user))
+                .thenReturn(Optional.of(deletedCosmetic));
+        when(cosmeticSetRepository.findAllContainingUserCosmeticForUpdate(
+                deletedCosmetic,
+                user
+        )).thenReturn(List.of(cosmeticSet));
+        when(cosmeticSetItemRepository.countItemsByCosmeticSetIn(List.of(cosmeticSet)))
+                .thenReturn(List.of(itemCount));
+
+        userCosmeticService.deleteUserCosmetic(1L, SESSION_TOKEN);
+
+        verify(cosmeticSetItemRepository)
+                .deleteAllByUserCosmeticAndCosmeticSetIn(
+                        deletedCosmetic,
+                        List.of(cosmeticSet)
+                );
+        verify(cosmeticSetItemRepository).deleteAllByCosmeticSetIn(List.of(cosmeticSet));
+        verify(cosmeticSetRepository).deleteAll(List.of(cosmeticSet));
+        assertTrue(deletedCosmetic.isDeleted());
+    }
+
+    @Test
+    void deleteUserCosmetic_keepsSetWhenTwoItemsWouldRemain() {
+        UserCosmetic deletedCosmetic = userCosmetic("삭제할 토너");
+        CosmeticSet cosmeticSet = cosmeticSet("세 단계 루틴");
+        CosmeticSetItemRepository.CosmeticSetItemCount itemCount =
+                cosmeticSetItemCount(cosmeticSet, 3L);
+
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(userCosmeticRepository.findByIdAndUserAndDeletedAtIsNull(1L, user))
+                .thenReturn(Optional.of(deletedCosmetic));
+        when(cosmeticSetRepository.findAllContainingUserCosmeticForUpdate(
+                deletedCosmetic,
+                user
+        )).thenReturn(List.of(cosmeticSet));
+        when(cosmeticSetItemRepository.countItemsByCosmeticSetIn(List.of(cosmeticSet)))
+                .thenReturn(List.of(itemCount));
+
+        userCosmeticService.deleteUserCosmetic(1L, SESSION_TOKEN);
+
+        verify(cosmeticSetItemRepository)
+                .deleteAllByUserCosmeticAndCosmeticSetIn(
+                        deletedCosmetic,
+                        List.of(cosmeticSet)
+                );
+        verify(cosmeticSetItemRepository, never()).deleteAllByCosmeticSetIn(any());
+        verify(cosmeticSetRepository, never()).deleteAll(any());
+        assertTrue(deletedCosmetic.isDeleted());
     }
 
     @Test
@@ -194,5 +260,40 @@ class UserCosmeticServiceTest {
         );
 
         assertSame(CosmeticErrorCode.USER_COSMETIC_NOT_FOUND, exception.getErrorCode());
+        verifyNoInteractions(cosmeticSetRepository, cosmeticSetItemRepository);
+    }
+
+    private UserCosmetic userCosmetic(String productName) {
+        CosmeticProduct cosmeticProduct = CosmeticProduct.builder()
+                .createdByUser(user)
+                .sourceType("manual")
+                .productName(productName)
+                .productType("serum")
+                .build();
+
+        return UserCosmetic.builder()
+                .user(user)
+                .cosmeticProduct(cosmeticProduct)
+                .build();
+    }
+
+    private CosmeticSet cosmeticSet(String name) {
+        return CosmeticSet.builder()
+                .user(user)
+                .name(name)
+                .usageTime(CosmeticSetUsageTime.MORNING)
+                .build();
+    }
+
+    private CosmeticSetItemRepository.CosmeticSetItemCount cosmeticSetItemCount(
+            CosmeticSet cosmeticSet,
+            long itemCount
+    ) {
+        CosmeticSetItemRepository.CosmeticSetItemCount count = mock(
+                CosmeticSetItemRepository.CosmeticSetItemCount.class
+        );
+        when(count.getCosmeticSet()).thenReturn(cosmeticSet);
+        when(count.getItemCount()).thenReturn(itemCount);
+        return count;
     }
 }

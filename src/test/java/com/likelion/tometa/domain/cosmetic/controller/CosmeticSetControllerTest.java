@@ -119,6 +119,36 @@ class CosmeticSetControllerTest {
     }
 
     @Test
+    void createCosmeticSet_rejectsFewerThanTwoCosmetics() throws Exception {
+        doThrow(new GeneralException(CosmeticErrorCode.COSMETIC_SET_MIN_ITEMS_REQUIRED))
+                .when(cosmeticSetService)
+                .createCosmeticSet(
+                        any(CosmeticSetCreateRequestDto.class),
+                        eq("session-token")
+                );
+
+        mockMvc.perform(post("/api/cosmetic-sets")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(new Cookie("anonymous_session", "session-token"))
+                        .content("""
+                                {
+                                  "name": "진정템",
+                                  "usageTime": "morning",
+                                  "userCosmeticIds": [11]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "COSMETIC_SET_4003",
+                          "message": "화장품 세트는 최소 2개의 화장품으로 구성해야 합니다.",
+                          "result": null
+                        }
+                        """));
+    }
+
+    @Test
     void createCosmeticSet_rejectsDuplicateCosmeticIds() throws Exception {
         doThrow(new GeneralException(CosmeticErrorCode.COSMETIC_SET_DUPLICATE_ITEM))
                 .when(cosmeticSetService)
@@ -232,6 +262,35 @@ class CosmeticSetControllerTest {
         assertEquals("새 세트 이름", requestCaptor.getValue().name());
         assertNull(requestCaptor.getValue().usageTime());
         assertNull(requestCaptor.getValue().userCosmeticIds());
+    }
+
+    @Test
+    void updateCosmeticSet_rejectsFewerThanTwoCosmetics() throws Exception {
+        doThrow(new GeneralException(CosmeticErrorCode.COSMETIC_SET_MIN_ITEMS_REQUIRED))
+                .when(cosmeticSetService)
+                .updateCosmeticSet(
+                        eq(7L),
+                        any(CosmeticSetUpdateRequestDto.class),
+                        eq("session-token")
+                );
+
+        mockMvc.perform(patch("/api/cosmetic-sets/7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(new Cookie("anonymous_session", "session-token"))
+                        .content("""
+                                {
+                                  "userCosmeticIds": [11]
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "COSMETIC_SET_4003",
+                          "message": "화장품 세트는 최소 2개의 화장품으로 구성해야 합니다.",
+                          "result": null
+                        }
+                        """));
     }
 
     @Test

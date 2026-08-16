@@ -166,6 +166,31 @@ class CosmeticSetServiceTest {
     }
 
     @Test
+    void createCosmeticSet_rejectsFewerThanTwoCosmetics() {
+        CosmeticSetCreateRequestDto request = new CosmeticSetCreateRequestDto(
+                "진정템",
+                "morning",
+                List.of(11L)
+        );
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> cosmeticSetService.createCosmeticSet(request, SESSION_TOKEN)
+        );
+
+        assertSame(
+                CosmeticErrorCode.COSMETIC_SET_MIN_ITEMS_REQUIRED,
+                exception.getErrorCode()
+        );
+        verifyNoInteractions(
+                userCosmeticRepository,
+                cosmeticSetRepository,
+                cosmeticSetItemRepository
+        );
+    }
+
+    @Test
     void createCosmeticSet_rejectsDuplicateCosmeticIds() {
         CosmeticSetCreateRequestDto request = new CosmeticSetCreateRequestDto(
                 "진정템",
@@ -192,7 +217,7 @@ class CosmeticSetServiceTest {
         CosmeticSetCreateRequestDto request = new CosmeticSetCreateRequestDto(
                 "진정템",
                 "MORNING",
-                List.of(11L)
+                List.of(11L, 12L)
         );
         when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
 
@@ -414,6 +439,30 @@ class CosmeticSetServiceTest {
         );
 
         assertSame(CosmeticErrorCode.COSMETIC_SET_ITEMS_REQUIRED, exception.getErrorCode());
+        verifyNoInteractions(userCosmeticRepository, cosmeticSetItemRepository);
+    }
+
+    @Test
+    void updateCosmeticSet_rejectsFewerThanTwoCosmetics() {
+        CosmeticSetUpdateRequestDto request = new CosmeticSetUpdateRequestDto(
+                null,
+                null,
+                List.of(11L)
+        );
+        CosmeticSet cosmeticSet = cosmeticSet("기존 세트", CosmeticSetUsageTime.BOTH);
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
+        when(cosmeticSetRepository.findByIdAndUser(7L, user))
+                .thenReturn(Optional.of(cosmeticSet));
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> cosmeticSetService.updateCosmeticSet(7L, request, SESSION_TOKEN)
+        );
+
+        assertSame(
+                CosmeticErrorCode.COSMETIC_SET_MIN_ITEMS_REQUIRED,
+                exception.getErrorCode()
+        );
         verifyNoInteractions(userCosmeticRepository, cosmeticSetItemRepository);
     }
 

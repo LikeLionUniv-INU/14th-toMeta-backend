@@ -1,15 +1,32 @@
 package com.likelion.tometa.domain.cosmetic.repository;
 
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
+import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
 import com.likelion.tometa.domain.user.entity.User;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface CosmeticSetRepository extends JpaRepository<CosmeticSet, Long> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<CosmeticSet> findByIdAndUser(Long id, User user);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select item.cosmeticSet
+            from CosmeticSetItem item
+            where item.userCosmetic = :userCosmetic
+              and item.cosmeticSet.user = :user
+            order by item.cosmeticSet.id
+            """)
+    List<CosmeticSet> findAllContainingUserCosmeticForUpdate(
+            @Param("userCosmetic") UserCosmetic userCosmetic,
+            @Param("user") User user
+    );
 }

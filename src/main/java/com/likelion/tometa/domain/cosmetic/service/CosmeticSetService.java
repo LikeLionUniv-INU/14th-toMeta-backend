@@ -24,6 +24,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
+import static com.likelion.tometa.domain.cosmetic.constant.CosmeticSetPolicy.MIN_ITEM_COUNT;
+
 @Service
 @RequiredArgsConstructor
 public class CosmeticSetService {
@@ -162,6 +164,11 @@ public class CosmeticSetService {
 
         if (new HashSet<>(userCosmeticIds).size() != userCosmeticIds.size()) {
             throw new GeneralException(CosmeticErrorCode.COSMETIC_SET_DUPLICATE_ITEM);
+        }
+
+        if (userCosmeticIds.size() < MIN_ITEM_COUNT) {
+            throw new GeneralException(
+                    CosmeticErrorCode.COSMETIC_SET_MIN_ITEMS_REQUIRED);
         }
     }
 

@@ -4,10 +4,13 @@ import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
+import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
 import com.likelion.tometa.domain.cosmetic.enums.ProductType;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticIngredientRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticProductRepository;
+import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
+import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
@@ -19,6 +22,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import static com.likelion.tometa.domain.cosmetic.constant.CosmeticSetPolicy.MIN_ITEM_COUNT;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +38,8 @@ public class UserCosmeticService {
     private final CosmeticProductRepository cosmeticProductRepository;
     private final CosmeticIngredientRepository cosmeticIngredientRepository;
     private final UserCosmeticRepository userCosmeticRepository;
+    private final CosmeticSetRepository cosmeticSetRepository;
+    private final CosmeticSetItemRepository cosmeticSetItemRepository;
 
     @Transactional
     public void createManualCosmetic(
@@ -72,7 +81,42 @@ public class UserCosmeticService {
                 .orElseThrow(() -> new GeneralException(
                         CosmeticErrorCode.USER_COSMETIC_NOT_FOUND));
 
+        removeUserCosmeticFromSets(userCosmetic, user);
         userCosmetic.softDelete();
+    }
+
+    private void removeUserCosmeticFromSets(UserCosmetic userCosmetic, User user) {
+        List<CosmeticSet> affectedSets = cosmeticSetRepository
+                .findAllContainingUserCosmeticForUpdate(userCosmetic, user);
+
+        if (affectedSets.isEmpty()) {
+            return;
+        }
+
+        Map<CosmeticSet, Long> itemCountBySet = cosmeticSetItemRepository
+                .countItemsByCosmeticSetIn(affectedSets)
+                .stream()
+                .collect(Collectors.toMap(
+                        CosmeticSetItemRepository.CosmeticSetItemCount::getCosmeticSet,
+                        CosmeticSetItemRepository.CosmeticSetItemCount::getItemCount
+                ));
+
+        List<CosmeticSet> setsToDelete = affectedSets.stream()
+                .filter(cosmeticSet -> itemCountBySet.getOrDefault(cosmeticSet, 0L) - 1
+                        < MIN_ITEM_COUNT)
+                .toList();
+
+        cosmeticSetItemRepository.deleteAllByUserCosmeticAndCosmeticSetIn(
+                userCosmetic,
+                affectedSets
+        );
+
+        if (setsToDelete.isEmpty()) {
+            return;
+        }
+
+        cosmeticSetItemRepository.deleteAllByCosmeticSetIn(setsToDelete);
+        cosmeticSetRepository.deleteAll(setsToDelete);
     }
 
     private void validateMainIngredientCount(List<String> mainIngredients) {
