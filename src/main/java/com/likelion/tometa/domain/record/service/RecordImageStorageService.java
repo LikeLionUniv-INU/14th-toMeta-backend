@@ -60,6 +60,7 @@ public class RecordImageStorageService {
                     .bucket(properties.bucket())
                     .key(objectKey)
                     .contentType(request.contentType())
+                    .contentLength(request.fileSize())
                     .build();
 
             PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()

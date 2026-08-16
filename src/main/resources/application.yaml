@@ -20,7 +20,7 @@ spring:
 app:
   anonymous-session:
     expiration-days: 60
-    cookie-secure: ${COOKIE_SECURE:false}
+    cookie-secure: ${COOKIE_SECURE:true}
 
   storage:
     s3:
