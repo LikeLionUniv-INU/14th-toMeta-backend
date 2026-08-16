@@ -21,3 +21,10 @@ app:
   anonymous-session:
     expiration-days: 60
     cookie-secure: ${COOKIE_SECURE:false}
+
+  storage:
+    s3:
+      bucket: ${AWS_S3_BUCKET}
+      region: ${AWS_REGION:ap-northeast-2}
+      presigned-upload-expiration-minutes: 10
+      max-upload-size-bytes: 10485760

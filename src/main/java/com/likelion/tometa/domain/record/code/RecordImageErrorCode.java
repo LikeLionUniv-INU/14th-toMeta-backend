@@ -1,0 +1,19 @@
+package com.likelion.tometa.domain.record.code;
+
+import com.likelion.tometa.global.code.BaseErrorCode;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import org.springframework.http.HttpStatus;
+
+@Getter
+@AllArgsConstructor
+public enum RecordImageErrorCode implements BaseErrorCode {
+
+    UNSUPPORTED_IMAGE_TYPE(HttpStatus.BAD_REQUEST, "IMAGE_4001", "지원하지 않는 이미지 형식입니다."),
+    IMAGE_SIZE_EXCEEDED(HttpStatus.BAD_REQUEST, "IMAGE_4002", "이미지 파일 크기가 허용 범위를 초과했습니다."),
+    PRESIGNED_URL_ISSUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "IMAGE_5001", "이미지 업로드 URL 발급에 실패했습니다.");
+
+    private final HttpStatus status;
+    private final String code;
+    private final String message;
+}
