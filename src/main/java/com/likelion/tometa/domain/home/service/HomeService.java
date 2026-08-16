@@ -5,13 +5,11 @@ import com.likelion.tometa.domain.record.entity.DailyRecord;
 import com.likelion.tometa.domain.record.repository.DailyRecordRepository;
 import com.likelion.tometa.domain.report.entity.DailyReport;
 import com.likelion.tometa.domain.report.repository.DailyReportRepository;
-import com.likelion.tometa.domain.tip.entity.SkinCareTip;
-import com.likelion.tometa.domain.tip.entity.UserDailySkinCareTip;
-import com.likelion.tometa.domain.tip.repository.SkinCareTipRepository;
-import com.likelion.tometa.domain.tip.repository.UserDailySkinCareTipRepository;
+import com.likelion.tometa.domain.tip.service.DailySkinCareTipService;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +20,6 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -37,8 +34,7 @@ public class HomeService {
     private final AnonymousSessionUserResolver sessionUserResolver;
     private final DailyRecordRepository dailyRecordRepository;
     private final DailyReportRepository dailyReportRepository;
-    private final UserDailySkinCareTipRepository userDailySkinCareTipRepository;
-    private final SkinCareTipRepository skinCareTipRepository;
+    private final DailySkinCareTipService dailySkinCareTipService;
 
     @Transactional
     public HomeResponseDto getHome(String sessionToken) {
@@ -112,28 +108,10 @@ public class HomeService {
     }
 
     private String getDailyTip(User user, LocalDate today) {
-        Optional<UserDailySkinCareTip> assignedTip = userDailySkinCareTipRepository.findByUserAndTipDate(user, today);
-
-        if (assignedTip.isPresent()) {
-            return assignedTip.get().getSkinCareTip().getContent();
+        try {
+            return dailySkinCareTipService.assignOrGet(user, today);
+        } catch (DataIntegrityViolationException e) {
+            return dailySkinCareTipService.findAssignedTip(user, today).orElseThrow(() -> e);
         }
-
-        List<SkinCareTip> activeTips = skinCareTipRepository.findAllByActiveTrue();
-
-        if (activeTips.isEmpty()) {
-            return null;
-        }
-
-        SkinCareTip selectedTip = activeTips.get(ThreadLocalRandom.current().nextInt(activeTips.size()));
-
-        userDailySkinCareTipRepository.save(
-                UserDailySkinCareTip.builder()
-                        .user(user)
-                        .skinCareTip(selectedTip)
-                        .tipDate(today)
-                        .build()
-        );
-
-        return selectedTip.getContent();
     }
 }
