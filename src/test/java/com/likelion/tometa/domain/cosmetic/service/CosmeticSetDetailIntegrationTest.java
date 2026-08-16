@@ -151,6 +151,30 @@ class CosmeticSetDetailIntegrationTest {
         assertSame(CosmeticErrorCode.COSMETIC_SET_NOT_FOUND, exception.getErrorCode());
     }
 
+    @Test
+    void getCosmeticSetDetail_excludesDeletedUserCosmetic() {
+        CosmeticProduct deletedProduct = cosmeticProductRepository.save(
+                cosmeticProduct("삭제된 크림", "cream")
+        );
+        UserCosmetic deletedUserCosmetic = userCosmeticRepository.save(
+                userCosmetic(deletedProduct, null)
+        );
+        deletedUserCosmetic.softDelete();
+        cosmeticSetItemRepository.save(
+                cosmeticSetItem(deletedUserCosmetic, 3)
+        );
+
+        CosmeticSetDetailResponseDto result = cosmeticSetService
+                .getCosmeticSetDetail(cosmeticSet.getId(), SESSION_TOKEN);
+
+        assertEquals(
+                List.of(tonerCosmetic.getId(), serumCosmetic.getId()),
+                result.cosmetics().stream()
+                        .map(CosmeticSetDetailResponseDto.Cosmetic::userCosmeticId)
+                        .toList()
+        );
+    }
+
     private CosmeticProduct cosmeticProduct(String productName, String productType) {
         return CosmeticProduct.builder()
                 .createdByUser(user)
