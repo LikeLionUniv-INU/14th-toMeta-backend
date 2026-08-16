@@ -212,19 +212,15 @@ class CosmeticSetControllerTest {
                                   "name": "  새 세트 이름  "
                                 }
                                 """))
-
-    void deleteCosmeticSet_returnsSuccess() throws Exception {
-        mockMvc.perform(delete("/api/cosmetic-sets/{setId}", 7L)
-                        .cookie(new Cookie("anonymous_session", "session-token")))
-                        .andExpect(status().isOk())
-                        .andExpect(content().json("""
-                                {
-                                  "isSuccess": true,
-                                  "code": "COMMON_200",
-                                  "message": "요청에 성공했습니다.",
-                                  "result": null
-                                }
-                                """));
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": true,
+                          "code": "COMMON_200",
+                          "message": "요청에 성공했습니다.",
+                          "result": null
+                        }
+                        """));
 
         ArgumentCaptor<CosmeticSetUpdateRequestDto> requestCaptor =
                 ArgumentCaptor.forClass(CosmeticSetUpdateRequestDto.class);
@@ -256,27 +252,15 @@ class CosmeticSetControllerTest {
                                   "usageTime": "night"
                                 }
                                 """))
-        
-        verify(cosmeticSetService).deleteCosmeticSet(7L, "session-token");
-    }
-
-    @Test
-    void deleteCosmeticSet_returnsNotFound() throws Exception {
-        doThrow(new GeneralException(CosmeticErrorCode.COSMETIC_SET_NOT_FOUND))
-                .when(cosmeticSetService)
-                .deleteCosmeticSet(7L, "session-token");
-
-        mockMvc.perform(delete("/api/cosmetic-sets/{setId}", 7L)
-                        .cookie(new Cookie("anonymous_session", "session-token")))
-                        .andExpect(status().isNotFound())
-                        .andExpect(content().json("""
-                                {
-                                  "isSuccess": false,
-                                  "code": "COSMETIC_SET_4041",
-                                  "message": "화장품 세트를 찾을 수 없습니다.",
-                                  "result": null
-                                }
-                                """));
+                .andExpect(status().isNotFound())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "COSMETIC_SET_4041",
+                          "message": "화장품 세트를 찾을 수 없습니다.",
+                          "result": null
+                        }
+                        """));
     }
 
     @Test
@@ -300,5 +284,41 @@ class CosmeticSetControllerTest {
                         """));
 
         verify(cosmeticSetService, never()).updateCosmeticSet(any(), any(), any());
+    }
+
+    @Test
+    void deleteCosmeticSet_returnsSuccess() throws Exception {
+        mockMvc.perform(delete("/api/cosmetic-sets/{setId}", 7L)
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": true,
+                          "code": "COMMON_200",
+                          "message": "요청에 성공했습니다.",
+                          "result": null
+                        }
+                        """));
+
+        verify(cosmeticSetService).deleteCosmeticSet(7L, "session-token");
+    }
+
+    @Test
+    void deleteCosmeticSet_returnsNotFound() throws Exception {
+        doThrow(new GeneralException(CosmeticErrorCode.COSMETIC_SET_NOT_FOUND))
+                .when(cosmeticSetService)
+                .deleteCosmeticSet(7L, "session-token");
+
+        mockMvc.perform(delete("/api/cosmetic-sets/{setId}", 7L)
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isNotFound())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "COSMETIC_SET_4041",
+                          "message": "화장품 세트를 찾을 수 없습니다.",
+                          "result": null
+                        }
+                        """));
     }
 }

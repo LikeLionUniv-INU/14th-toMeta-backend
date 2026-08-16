@@ -46,6 +46,9 @@ public class CosmeticSetController {
     ) {
         cosmeticSetService.updateCosmeticSet(setId, request, sessionToken);
 
+        return ResponseEntity.ok(ApiResponse.success());
+    }
+
     @DeleteMapping("/{setId}")
     public ResponseEntity<ApiResponse<Void>> deleteCosmeticSet(
             @PathVariable("setId") Long setId,

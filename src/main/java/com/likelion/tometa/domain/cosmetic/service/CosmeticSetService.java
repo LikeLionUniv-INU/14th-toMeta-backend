@@ -136,7 +136,9 @@ public class CosmeticSetService {
             userCosmeticById.put(userCosmetic.getId(), userCosmetic);
         }
         return userCosmeticById;
-    
+    }
+
+    @Transactional
     public void deleteCosmeticSet(Long setId, String sessionToken) {
         User user = sessionUserResolver.resolve(sessionToken);
 
