@@ -131,8 +131,11 @@ class UserCosmeticServiceTest {
             assertEquals(3, tags.size());
             assertSame(savedProduct, tags.get(0).getCosmeticProduct());
             assertSame(CosmeticTagType.INGREDIENT, tags.get(0).getTagType());
+            assertEquals("히알루론산", tags.get(0).getName());
             assertEquals(1, tags.get(0).getTagOrder());
+            assertEquals("나이아신아마이드", tags.get(1).getName());
             assertEquals(2, tags.get(1).getTagOrder());
+            assertEquals("판테놀", tags.get(2).getName());
             assertEquals(3, tags.get(2).getTagOrder());
             return true;
         }));
