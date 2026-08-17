@@ -14,6 +14,11 @@ public enum CosmeticErrorCode implements BaseErrorCode {
             "COSMETIC_4001",
             "주요 성분은 최대 5개까지 입력할 수 있습니다."
     ),
+    COSMETIC_SEARCH_KEYWORD_INVALID(
+            HttpStatus.BAD_REQUEST,
+            "COSMETIC_4002",
+            "화장품 검색어는 2자 이상 100자 이하로 입력해주세요."
+    ),
     COSMETIC_SET_ITEMS_REQUIRED(
             HttpStatus.BAD_REQUEST,
             "COSMETIC_SET_4001",
@@ -38,6 +43,11 @@ public enum CosmeticErrorCode implements BaseErrorCode {
             HttpStatus.NOT_FOUND,
             "COSMETIC_4042",
             "등록된 화장품을 찾을 수 없습니다."
+    ),
+    COSMETIC_SEARCH_FAILED(
+            HttpStatus.BAD_GATEWAY,
+            "COSMETIC_5021",
+            "화장품 검색 중 외부 서비스 오류가 발생했습니다."
     );
 
     private final HttpStatus status;
