@@ -5,12 +5,15 @@ import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateReque
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
+import com.likelion.tometa.domain.cosmetic.entity.CosmeticTag;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
+import com.likelion.tometa.domain.cosmetic.enums.CosmeticTagType;
 import com.likelion.tometa.domain.cosmetic.enums.ProductType;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticIngredientRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticProductRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
+import com.likelion.tometa.domain.cosmetic.repository.CosmeticTagRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
@@ -31,12 +34,13 @@ import static com.likelion.tometa.domain.cosmetic.constant.CosmeticSetPolicy.MIN
 @RequiredArgsConstructor
 public class UserCosmeticService {
 
-    private static final int MAX_MAIN_INGREDIENT_COUNT = 5;
+    private static final int MAX_MAIN_INGREDIENT_COUNT = 3;
     private static final String MANUAL_SOURCE_TYPE = "manual";
 
     private final AnonymousSessionUserResolver sessionUserResolver;
     private final CosmeticProductRepository cosmeticProductRepository;
     private final CosmeticIngredientRepository cosmeticIngredientRepository;
+    private final CosmeticTagRepository cosmeticTagRepository;
     private final UserCosmeticRepository userCosmeticRepository;
     private final CosmeticSetRepository cosmeticSetRepository;
     private final CosmeticSetItemRepository cosmeticSetItemRepository;
@@ -62,6 +66,9 @@ public class UserCosmeticService {
 
         cosmeticIngredientRepository.saveAll(
                 createMainIngredients(cosmeticProduct, request.mainIngredients())
+        );
+        cosmeticTagRepository.saveAll(
+                createIngredientTags(cosmeticProduct, request.mainIngredients())
         );
 
         userCosmeticRepository.save(
@@ -149,5 +156,25 @@ public class UserCosmeticService {
         }
 
         return ingredients;
+    }
+
+    private List<CosmeticTag> createIngredientTags(
+            CosmeticProduct cosmeticProduct,
+            List<String> ingredientNames
+    ) {
+        List<CosmeticTag> tags = new ArrayList<>(ingredientNames.size());
+
+        for (int index = 0; index < ingredientNames.size(); index++) {
+            tags.add(
+                    CosmeticTag.builder()
+                            .cosmeticProduct(cosmeticProduct)
+                            .tagType(CosmeticTagType.INGREDIENT)
+                            .name(ingredientNames.get(index))
+                            .tagOrder(index + 1)
+                            .build()
+            );
+        }
+
+        return tags;
     }
 }

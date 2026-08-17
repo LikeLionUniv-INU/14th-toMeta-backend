@@ -12,7 +12,7 @@ public enum CosmeticErrorCode implements BaseErrorCode {
     MAIN_INGREDIENTS_LIMIT_EXCEEDED(
             HttpStatus.BAD_REQUEST,
             "COSMETIC_4001",
-            "주요 성분은 최대 5개까지 입력할 수 있습니다."
+            "주요 성분은 최대 3개까지 입력할 수 있습니다."
     ),
     COSMETIC_SET_ITEMS_REQUIRED(
             HttpStatus.BAD_REQUEST,

@@ -14,6 +14,8 @@ import java.util.Optional;
 
 public interface CosmeticSetRepository extends JpaRepository<CosmeticSet, Long> {
 
+    List<CosmeticSet> findAllByUserOrderByCreatedAtDescIdDesc(User user);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<CosmeticSet> findByIdAndUser(Long id, User user);
 

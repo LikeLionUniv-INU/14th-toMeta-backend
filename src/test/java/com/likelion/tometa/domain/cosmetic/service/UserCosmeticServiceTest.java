@@ -5,12 +5,15 @@ import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateReque
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
+import com.likelion.tometa.domain.cosmetic.entity.CosmeticTag;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
+import com.likelion.tometa.domain.cosmetic.enums.CosmeticTagType;
 import com.likelion.tometa.domain.cosmetic.enums.CosmeticSetUsageTime;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticIngredientRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticProductRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
+import com.likelion.tometa.domain.cosmetic.repository.CosmeticTagRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
@@ -55,6 +58,9 @@ class UserCosmeticServiceTest {
 
     @Mock
     private CosmeticIngredientRepository cosmeticIngredientRepository;
+
+    @Mock
+    private CosmeticTagRepository cosmeticTagRepository;
 
     @Mock
     private UserCosmeticRepository userCosmeticRepository;
@@ -117,6 +123,20 @@ class UserCosmeticServiceTest {
             return true;
         }));
 
+        verify(cosmeticTagRepository).saveAll(argThat(savedTags -> {
+            List<CosmeticTag> tags = StreamSupport
+                    .stream(savedTags.spliterator(), false)
+                    .toList();
+
+            assertEquals(3, tags.size());
+            assertSame(savedProduct, tags.get(0).getCosmeticProduct());
+            assertSame(CosmeticTagType.INGREDIENT, tags.get(0).getTagType());
+            assertEquals(1, tags.get(0).getTagOrder());
+            assertEquals(2, tags.get(1).getTagOrder());
+            assertEquals(3, tags.get(2).getTagOrder());
+            return true;
+        }));
+
         ArgumentCaptor<UserCosmetic> userCosmeticCaptor =
                 ArgumentCaptor.forClass(UserCosmetic.class);
         verify(userCosmeticRepository).save(userCosmeticCaptor.capture());
@@ -128,11 +148,11 @@ class UserCosmeticServiceTest {
     }
 
     @Test
-    void createManualCosmetic_rejectsMoreThanFiveMainIngredients() {
+    void createManualCosmetic_rejectsMoreThanThreeMainIngredients() {
         ManualCosmeticCreateRequestDto request = new ManualCosmeticCreateRequestDto(
                 "제품명",
                 "serum",
-                List.of("1", "2", "3", "4", "5", "6")
+                List.of("1", "2", "3", "4")
         );
         when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(user);
 
@@ -145,6 +165,7 @@ class UserCosmeticServiceTest {
         verifyNoInteractions(
                 cosmeticProductRepository,
                 cosmeticIngredientRepository,
+                cosmeticTagRepository,
                 userCosmeticRepository
         );
     }
@@ -167,6 +188,7 @@ class UserCosmeticServiceTest {
         verifyNoInteractions(
                 cosmeticProductRepository,
                 cosmeticIngredientRepository,
+                cosmeticTagRepository,
                 userCosmeticRepository
         );
     }
