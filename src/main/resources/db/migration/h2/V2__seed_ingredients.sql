@@ -1,4 +1,6 @@
-MERGE INTO ingredients (name, created_at) KEY (name)
+INSERT INTO ingredients (name, created_at)
+SELECT seed.name, seed.created_at
+FROM (
 VALUES
     ('병풀추출물', CURRENT_TIMESTAMP),
     ('병풀잎추출물', CURRENT_TIMESTAMP),
@@ -99,4 +101,10 @@ VALUES
     ('카페인', CURRENT_TIMESTAMP),
     ('달팽이점액여과물', CURRENT_TIMESTAMP),
     ('엑토인', CURRENT_TIMESTAMP),
-    ('아스타잔틴', CURRENT_TIMESTAMP);
+    ('아스타잔틴', CURRENT_TIMESTAMP)
+) AS seed(name, created_at)
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM ingredients existing
+    WHERE existing.name = seed.name
+);

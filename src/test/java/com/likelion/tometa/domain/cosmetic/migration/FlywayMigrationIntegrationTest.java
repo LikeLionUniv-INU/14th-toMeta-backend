@@ -2,6 +2,7 @@ package com.likelion.tometa.domain.cosmetic.migration;
 
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
@@ -39,6 +40,7 @@ class FlywayMigrationIntegrationTest {
     }
 
     @Test
+    @Timeout(10)
     void concurrentMigrate_isSerializedWithoutDuplicateIngredients() throws Exception {
         String jdbcUrl = newJdbcUrl();
         CountDownLatch ready = new CountDownLatch(2);
@@ -73,7 +75,7 @@ class FlywayMigrationIntegrationTest {
         executeUpdate(
                 jdbcUrl,
                 "insert into ingredients (name, created_at) values "
-                        + "('판테놀', current_timestamp)"
+                        + "('판테놀', timestamp '2025-01-02 03:04:05')"
         );
 
         Flyway.configure()
@@ -86,6 +88,15 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
+        assertEquals(
+                1,
+                queryForInt(
+                        jdbcUrl,
+                        "select count(*) from ingredients "
+                                + "where name = '판테놀' "
+                                + "and created_at = timestamp '2025-01-02 03:04:05'"
+                )
+        );
         assertEquals(2, successfulMigrationCount(jdbcUrl));
     }
 
