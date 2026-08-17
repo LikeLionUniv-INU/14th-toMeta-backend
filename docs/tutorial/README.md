@@ -280,7 +280,13 @@ Health Connect
 
 ## DB 스키마 관리
 
-현재 개발 환경에서는 JPA Entity를 기준으로 스키마를 관리하며
-Hibernate의 `ddl-auto: update` 설정을 사용합니다.
+DB 스키마와 기준 데이터는 Flyway 마이그레이션으로 관리합니다.
+Hibernate는 모든 환경에서 `ddl-auto: validate`만 수행하며 스키마를 변경하지 않습니다.
+
+- 신규 DB는 `db/migration/{vendor}`의 V1부터 순서대로 적용됩니다.
+- 이미 Hibernate가 생성한 기존 DB에 처음 Flyway를 적용할 때만
+  `FLYWAY_BASELINE_ON_MIGRATE=true`로 실행해 version 1을 baseline 처리합니다.
+- 첫 Flyway 배포가 완료되면 `FLYWAY_BASELINE_ON_MIGRATE=false`로 되돌립니다.
+- 적용된 마이그레이션 파일은 수정하지 않고 이후 변경은 다음 버전 파일로 추가합니다.
 
 ---

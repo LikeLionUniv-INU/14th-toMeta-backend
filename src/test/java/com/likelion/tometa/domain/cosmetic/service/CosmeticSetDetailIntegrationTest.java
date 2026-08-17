@@ -34,7 +34,8 @@ import static org.mockito.Mockito.when;
 
 @DataJpaTest(properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect"
+        "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
+        "spring.flyway.enabled=false"
 })
 @Import(CosmeticSetService.class)
 class CosmeticSetDetailIntegrationTest {
