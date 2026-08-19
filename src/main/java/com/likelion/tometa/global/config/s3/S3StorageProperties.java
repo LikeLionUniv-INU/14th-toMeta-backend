@@ -17,6 +17,9 @@ public record S3StorageProperties(
         @Min(value = 1, message = "Presigned URL 만료 시간은 1분 이상이어야 합니다.")
         long presignedUploadExpirationMinutes,
 
+        @Min(value = 1, message = "Presigned 조회 URL 만료 시간은 1분 이상이어야 합니다.")
+        long presignedDownloadExpirationMinutes,
+
         @Min(value = 1, message = "최대 업로드 크기는 1byte 이상이어야 합니다.")
         long maxUploadSizeBytes
 ) {
