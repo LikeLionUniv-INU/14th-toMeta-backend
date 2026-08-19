@@ -55,7 +55,7 @@ public class OpenAiCosmeticSearchClient {
 
             benefit:
             해당 제품의 대표적인 피부 효능 또는 사용 목적을 하나만 짧게 반환한다.
-            예: 진정, 수분, 보습, 피지조절, 장벽관리
+            예: 진정, 수분공급, 보습, 피지조절, 장벽강화, 주름개선, 속건조 개선
             실제 제품 정보에서 확인 가능한 내용만 반환한다.
 
             mainIngredients:

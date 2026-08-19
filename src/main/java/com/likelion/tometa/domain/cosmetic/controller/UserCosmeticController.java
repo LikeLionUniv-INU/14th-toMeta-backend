@@ -1,6 +1,9 @@
 package com.likelion.tometa.domain.cosmetic.controller;
 
 import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
+import com.likelion.tometa.domain.cosmetic.dto.request.SearchedCosmeticCreateRequestDto;
+import com.likelion.tometa.domain.cosmetic.dto.response.SearchedCosmeticCreateResponseDto;
+import com.likelion.tometa.domain.cosmetic.service.SearchedCosmeticRegistrationService;
 import com.likelion.tometa.domain.cosmetic.service.UserCosmeticService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
 import com.likelion.tometa.global.response.ApiResponse;
@@ -21,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserCosmeticController {
 
     private final UserCosmeticService userCosmeticService;
+    private final SearchedCosmeticRegistrationService searchedCosmeticRegistrationService;
 
     @PostMapping("/manual")
     public ResponseEntity<ApiResponse<Void>> createManualCosmetic(
@@ -31,6 +35,20 @@ public class UserCosmeticController {
         userCosmeticService.createManualCosmetic(request, sessionToken);
 
         return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    @PostMapping("/search-result")
+    public ResponseEntity<ApiResponse<SearchedCosmeticCreateResponseDto>> createSearchedCosmetic(
+            @Valid @RequestBody SearchedCosmeticCreateRequestDto request,
+            @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false)
+            String sessionToken
+    ) {
+        SearchedCosmeticCreateResponseDto result = searchedCosmeticRegistrationService.create(
+                request,
+                sessionToken
+        );
+
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 
     @DeleteMapping("/{userCosmeticId}")
