@@ -77,6 +77,10 @@ public class DailyReport extends BaseTimeEntity {
         this.reportStatus = "generating";
     }
 
+    public void markCollecting() {
+        this.reportStatus = "collecting";
+    }
+
     public void complete(
             DailyHealthSummary dailyHealthSummary,
             String aiSummary,
