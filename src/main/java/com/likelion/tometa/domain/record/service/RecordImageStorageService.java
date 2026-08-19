@@ -116,7 +116,7 @@ public class RecordImageStorageService {
     }
 
     private void validateFileSize(long fileSize) {
-        if (fileSize > properties.maxUploadSizeBytes()) {
+        if (fileSize <= 0 || fileSize > properties.maxUploadSizeBytes()) {
             throw new GeneralException(RecordImageErrorCode.IMAGE_SIZE_EXCEEDED);
         }
     }

@@ -71,10 +71,10 @@ public class DailyRecordImageAttachmentService {
         }
 
         Long contentLength = object.contentLength();
-        if (contentLength == null || contentLength <= 0) {
+        if (contentLength == null) {
             throw new GeneralException(RecordImageErrorCode.INVALID_IMAGE_KEY);
         }
-        if (contentLength > properties.maxUploadSizeBytes()) {
+        if (contentLength <= 0 || contentLength > properties.maxUploadSizeBytes()) {
             throw new GeneralException(RecordImageErrorCode.IMAGE_SIZE_EXCEEDED);
         }
 

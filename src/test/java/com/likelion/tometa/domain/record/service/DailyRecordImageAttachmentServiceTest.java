@@ -169,6 +169,24 @@ class DailyRecordImageAttachmentServiceTest {
     }
 
     @Test
+    void attach_rejectsZeroByteImageAsInvalidSize() {
+        String key = "skin-images/1/empty.jpg";
+        when(s3Client.headObject(any(HeadObjectRequest.class)))
+                .thenReturn(HeadObjectResponse.builder()
+                        .contentType("image/jpeg")
+                        .contentLength(0L)
+                        .build());
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> service.attach(dailyRecord, user, List.of(key))
+        );
+
+        assertSame(RecordImageErrorCode.IMAGE_SIZE_EXCEEDED, exception.getErrorCode());
+        verify(dailyRecordImageRepository, never()).saveAllAndFlush(any());
+    }
+
+    @Test
     void attach_rejectsDuplicateImageKeysBeforeS3Request() {
         String key = "skin-images/1/image.jpg";
 

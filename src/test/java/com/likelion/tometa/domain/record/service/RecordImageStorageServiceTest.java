@@ -100,4 +100,32 @@ class RecordImageStorageServiceTest {
         assertSame(RecordImageErrorCode.INVALID_IMAGE_COUNT, exception.getErrorCode());
         verify(s3Presigner, never()).presignPutObject(any(PutObjectPresignRequest.class));
     }
+
+    @Test
+    void issueUploadUrl_rejectsEmptyImages() {
+        RecordImageUploadUrlRequestDto request = new RecordImageUploadUrlRequestDto(List.of());
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> service.issueUploadUrl(request, "session-token")
+        );
+
+        assertSame(RecordImageErrorCode.INVALID_IMAGE_COUNT, exception.getErrorCode());
+        verify(s3Presigner, never()).presignPutObject(any(PutObjectPresignRequest.class));
+    }
+
+    @Test
+    void issueUploadUrl_rejectsZeroByteImage() {
+        RecordImageUploadUrlRequestDto request = new RecordImageUploadUrlRequestDto(List.of(
+                new RecordImageUploadUrlRequestDto.ImageUploadRequest("image/jpeg", 0L)
+        ));
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> service.issueUploadUrl(request, "session-token")
+        );
+
+        assertSame(RecordImageErrorCode.IMAGE_SIZE_EXCEEDED, exception.getErrorCode());
+        verify(s3Presigner, never()).presignPutObject(any(PutObjectPresignRequest.class));
+    }
 }
