@@ -2,6 +2,7 @@ package com.likelion.tometa.domain.cosmetic.controller;
 
 import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
+import com.likelion.tometa.domain.cosmetic.service.SearchedCosmeticRegistrationService;
 import com.likelion.tometa.domain.cosmetic.service.UserCosmeticService;
 import com.likelion.tometa.domain.user.code.UserErrorCode;
 import com.likelion.tometa.global.exception.GeneralException;
@@ -31,11 +32,17 @@ class UserCosmeticControllerTest {
     @Mock
     private UserCosmeticService userCosmeticService;
 
+    @Mock
+    private SearchedCosmeticRegistrationService searchedCosmeticRegistrationService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        UserCosmeticController controller = new UserCosmeticController(userCosmeticService);
+        UserCosmeticController controller = new UserCosmeticController(
+                userCosmeticService,
+                searchedCosmeticRegistrationService
+        );
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())

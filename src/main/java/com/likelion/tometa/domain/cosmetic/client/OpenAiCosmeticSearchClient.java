@@ -43,9 +43,8 @@ public class OpenAiCosmeticSearchClient {
 
             productType:
             반드시 다음 값 중 하나만 사용한다.
-            skin_toner, toner_pad, mist, ampoule, serum, essence,
-            moisture_cream, soothing_cream, moisturizing_cream,
-            lotion_emulsion, eye_cream, etc
+            스킨/토너, 토너패드, 미스트, 앰플, 세럼, 에센스,
+            수분크림, 진정크림, 보습크림, 로션/에멀전, 아이크림, 기타
 
             imageUrl:
             해당 제품을 대표하는 실제 제품 이미지의 직접 URL을 반환한다.
@@ -55,14 +54,13 @@ public class OpenAiCosmeticSearchClient {
 
             benefit:
             해당 제품의 대표적인 피부 효능 또는 사용 목적을 하나만 짧게 반환한다.
-            예: 진정, 수분, 보습, 피지조절, 장벽관리
+            예: 진정, 수분공급, 보습, 피지조절, 장벽강화, 주름개선, 속건조 개선
             실제 제품 정보에서 확인 가능한 내용만 반환한다.
 
             mainIngredients:
-            실제 해당 제품에서 확인할 수 있는 대표적인 주요 성분을 최대 3개 반환한다.
-            전성분 전체를 반환하지 않는다.
-            동일한 성분은 중복하지 않는다.
-            확인할 수 없는 성분을 추측해서 만들지 않는다.
+            실제 제품에서 확인할 수 있는 대표적인 주요 성분을 최대 3개 반환한다.
+            전성분의 공식 명칭보다 사용자가 쉽게 이해할 수 있는 대표 성분명을 우선 사용한다.
+            예: 약모밀꽃/잎/줄기수 → 어성초, 병풀잎추출물 → 병풀
 
             효능 또는 주요 성분을 확인할 수 없는 제품은 결과에서 제외한다.
             검색 결과가 없으면 items에 빈 배열을 반환한다.

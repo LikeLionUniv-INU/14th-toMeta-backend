@@ -44,6 +44,11 @@ public enum CosmeticErrorCode implements BaseErrorCode {
             "COSMETIC_4042",
             "등록된 화장품을 찾을 수 없습니다."
     ),
+    COSMETIC_SEARCH_RESULT_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "COSMETIC_4043",
+            "검색 결과가 만료되었거나 존재하지 않습니다. 다시 검색해주세요."
+    ),
     COSMETIC_SEARCH_FAILED(
             HttpStatus.BAD_GATEWAY,
             "COSMETIC_5021",

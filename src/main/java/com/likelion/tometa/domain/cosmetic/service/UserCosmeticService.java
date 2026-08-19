@@ -2,6 +2,7 @@ package com.likelion.tometa.domain.cosmetic.service;
 
 import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
+import com.likelion.tometa.domain.cosmetic.dto.response.SearchedCosmeticCreateResponseDto;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
@@ -15,6 +16,7 @@ import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticTagRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
+import com.likelion.tometa.domain.cosmetic.support.CosmeticSearchCandidate;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
 import com.likelion.tometa.global.code.GlobalErrorCode;
@@ -35,7 +37,9 @@ import static com.likelion.tometa.domain.cosmetic.constant.CosmeticSetPolicy.MIN
 public class UserCosmeticService {
 
     private static final int MAX_MAIN_INGREDIENT_COUNT = 3;
+    private static final int MAX_SEARCH_RESPONSE_INGREDIENT_COUNT = 2;
     private static final String MANUAL_SOURCE_TYPE = "manual";
+    private static final String SEARCH_SOURCE_TYPE = "search";
 
     private final AnonymousSessionUserResolver sessionUserResolver;
     private final CosmeticProductRepository cosmeticProductRepository;
@@ -76,6 +80,46 @@ public class UserCosmeticService {
                         .user(user)
                         .cosmeticProduct(cosmeticProduct)
                         .build()
+        );
+    }
+
+    @Transactional
+    public SearchedCosmeticCreateResponseDto createSearchedCosmetic(
+            User user,
+            CosmeticSearchCandidate candidate
+    ) {
+        validateMainIngredientCount(candidate.mainIngredients());
+        validateProductType(candidate.productType());
+
+        CosmeticProduct cosmeticProduct = cosmeticProductRepository.save(
+                CosmeticProduct.builder()
+                        .createdByUser(user)
+                        .sourceType(SEARCH_SOURCE_TYPE)
+                        .productName(candidate.productName())
+                        .productType(candidate.productType())
+                        .imageUrl(candidate.imageUrl())
+                        .build()
+        );
+
+        cosmeticIngredientRepository.saveAll(
+                createMainIngredients(cosmeticProduct, candidate.mainIngredients())
+        );
+        cosmeticTagRepository.saveAll(
+                createSearchTags(cosmeticProduct, candidate)
+        );
+
+        UserCosmetic userCosmetic = userCosmeticRepository.save(
+                UserCosmetic.builder()
+                        .user(user)
+                        .cosmeticProduct(cosmeticProduct)
+                        .build()
+        );
+
+        return new SearchedCosmeticCreateResponseDto(
+                userCosmetic.getId(),
+                cosmeticProduct.getProductName(),
+                cosmeticProduct.getProductType(),
+                createSearchResponseTags(candidate)
         );
     }
 
@@ -176,5 +220,47 @@ public class UserCosmeticService {
         }
 
         return tags;
+    }
+
+    private List<CosmeticTag> createSearchTags(
+            CosmeticProduct cosmeticProduct,
+            CosmeticSearchCandidate candidate
+    ) {
+        List<CosmeticTag> tags = new ArrayList<>(candidate.mainIngredients().size() + 1);
+
+        tags.add(
+                CosmeticTag.builder()
+                        .cosmeticProduct(cosmeticProduct)
+                        .tagType(CosmeticTagType.BENEFIT)
+                        .name(candidate.benefit())
+                        .tagOrder(1)
+                        .build()
+        );
+
+        for (int index = 0; index < candidate.mainIngredients().size(); index++) {
+            tags.add(
+                    CosmeticTag.builder()
+                            .cosmeticProduct(cosmeticProduct)
+                            .tagType(CosmeticTagType.INGREDIENT)
+                            .name(candidate.mainIngredients().get(index))
+                            .tagOrder(index + 1)
+                            .build()
+            );
+        }
+
+        return tags;
+    }
+
+    private List<String> createSearchResponseTags(CosmeticSearchCandidate candidate) {
+        List<String> tags = new ArrayList<>(MAX_SEARCH_RESPONSE_INGREDIENT_COUNT + 2);
+
+        tags.add(ProductType.displayNameOf(candidate.productType()));
+        tags.add(candidate.benefit());
+
+        candidate.mainIngredients().stream()
+                .limit(MAX_SEARCH_RESPONSE_INGREDIENT_COUNT)
+                .forEach(tags::add);
+
+        return List.copyOf(tags);
     }
 }
