@@ -21,4 +21,16 @@ public interface CosmeticIngredientRepository extends JpaRepository<CosmeticIngr
     List<CosmeticIngredient> findAllMainByCosmeticProductIds(
             @Param("cosmeticProductIds") Collection<Long> cosmeticProductIds
     );
+
+    @Query("""
+            select cosmeticIngredient
+            from CosmeticIngredient cosmeticIngredient
+            left join fetch cosmeticIngredient.ingredient
+            where cosmeticIngredient.cosmeticProduct.id in :cosmeticProductIds
+            order by cosmeticIngredient.cosmeticProduct.id,
+                     cosmeticIngredient.ingredientOrder
+            """)
+    List<CosmeticIngredient> findAllByCosmeticProductIdsOrderByIngredientOrder(
+            @Param("cosmeticProductIds") Collection<Long> cosmeticProductIds
+    );
 }
