@@ -25,13 +25,8 @@ import java.util.Map;
 public class OpenAiCosmeticSearchClient {
 
     private static final int MAX_RESULT_COUNT = 5;
-    private static final int MAX_MAIN_INGREDIENT_COUNT = 2;
-
-    private static final List<String> PRODUCT_TYPES = List.of(
-            "skin_toner", "toner_pad", "mist", "ampoule", "serum", "essence",
-            "moisture_cream", "soothing_cream", "moisturizing_cream",
-            "lotion_emulsion", "eye_cream", "etc"
-    );
+    private static final int MAX_MAIN_INGREDIENT_COUNT = 3;
+    private static final List<String> PRODUCT_TYPES = ProductType.supportedValues();
 
     private static final String INSTRUCTIONS = """
             너는 한국에서 판매되는 기초 화장품을 검색하는 제품 검색기다.
@@ -64,7 +59,7 @@ public class OpenAiCosmeticSearchClient {
             실제 제품 정보에서 확인 가능한 내용만 반환한다.
 
             mainIngredients:
-            실제 해당 제품에서 확인할 수 있는 대표적인 주요 성분을 최대 2개 반환한다.
+            실제 해당 제품에서 확인할 수 있는 대표적인 주요 성분을 최대 3개 반환한다.
             전성분 전체를 반환하지 않는다.
             동일한 성분은 중복하지 않는다.
             확인할 수 없는 성분을 추측해서 만들지 않는다.
@@ -95,6 +90,8 @@ public class OpenAiCosmeticSearchClient {
 
             String outputText = extractOutputText(response);
             SearchPayload payload = jsonMapper.readValue(outputText, SearchPayload.class);
+            validatePayload(payload);
+
             return normalize(payload.items());
         } catch (RestClientException | JacksonException e) {
             log.warn("OpenAI 화장품 검색 실패: {}", e.getMessage());
@@ -104,6 +101,7 @@ public class OpenAiCosmeticSearchClient {
 
     private Map<String, Object> createRequestBody(String keyword) {
         Map<String, Object> body = new LinkedHashMap<>();
+
         body.put("model", properties.model());
         body.put("reasoning", Map.of("effort", "low"));
         body.put("tools", List.of(Map.of(
@@ -116,11 +114,13 @@ public class OpenAiCosmeticSearchClient {
         body.put("text", Map.of("format", createResponseFormat()));
         body.put("max_output_tokens", 1800);
         body.put("store", false);
+
         return body;
     }
 
     private Map<String, Object> createResponseFormat() {
         Map<String, Object> itemProperties = new LinkedHashMap<>();
+
         itemProperties.put("productName", Map.of("type", "string"));
         itemProperties.put("productType", Map.of(
                 "type", "string",
@@ -194,6 +194,13 @@ public class OpenAiCosmeticSearchClient {
         }
     }
 
+    private void validatePayload(SearchPayload payload) {
+        if (payload == null || payload.items() == null) {
+            log.warn("OpenAI 화장품 검색 structured output 형식이 올바르지 않습니다.");
+            throw new GeneralException(CosmeticErrorCode.COSMETIC_SEARCH_FAILED);
+        }
+    }
+
     private String extractOutputText(JsonNode response) {
         JsonNode outputNode = response.path("output");
 
@@ -218,6 +225,7 @@ public class OpenAiCosmeticSearchClient {
                 }
 
                 String text = content.path("text").asText();
+
                 if (!text.isBlank()) {
                     return text;
                 }
@@ -229,7 +237,7 @@ public class OpenAiCosmeticSearchClient {
     }
 
     private List<CosmeticSearchCandidate> normalize(List<SearchItem> items) {
-        if (items == null || items.isEmpty()) {
+        if (items.isEmpty()) {
             return List.of();
         }
 
@@ -237,6 +245,7 @@ public class OpenAiCosmeticSearchClient {
 
         for (SearchItem item : items) {
             CosmeticSearchCandidate normalized = normalizeItem(item);
+
             if (normalized == null) {
                 continue;
             }
@@ -265,6 +274,7 @@ public class OpenAiCosmeticSearchClient {
         }
 
         List<String> ingredients = normalizeIngredients(item.mainIngredients());
+
         if (ingredients.isEmpty()) {
             return null;
         }
@@ -297,12 +307,15 @@ public class OpenAiCosmeticSearchClient {
         }
 
         String normalized = imageUrl.trim();
+
         return normalized.startsWith("https://") || normalized.startsWith("http://")
                 ? normalized
                 : null;
     }
 
-    private record SearchPayload(List<SearchItem> items) {
+    private record SearchPayload(
+            List<SearchItem> items
+    ) {
     }
 
     private record SearchItem(

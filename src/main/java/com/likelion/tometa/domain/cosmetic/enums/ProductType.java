@@ -1,6 +1,7 @@
 package com.likelion.tometa.domain.cosmetic.enums;
 
 import java.util.Arrays;
+import java.util.List;
 
 public enum ProductType {
 
@@ -26,5 +27,11 @@ public enum ProductType {
     public static boolean supports(String value) {
         return Arrays.stream(values())
                 .anyMatch(productType -> productType.value.equals(value));
+    }
+
+    public static List<String> supportedValues() {
+        return Arrays.stream(values())
+                .map(productType -> productType.value)
+                .toList();
     }
 }
