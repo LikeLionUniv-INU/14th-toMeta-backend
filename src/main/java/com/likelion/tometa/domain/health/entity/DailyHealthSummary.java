@@ -57,11 +57,17 @@ public class DailyHealthSummary {
     @Column(name = "menstruation_status", length = 30)
     private String menstruationStatus;
 
+    @Column(name = "menstrual_cycle_day")
+    private Integer menstrualCycleDay;
+
     @Column(name = "exercise_performed")
     private Boolean exercisePerformed;
 
     @Column(name = "exercise_minutes")
     private Integer exerciseMinutes;
+
+    @Column(name = "total_calories_burned")
+    private Integer totalCaloriesBurned;
 
     @Column(name = "average_heart_rate")
     private Integer averageHeartRate;
@@ -74,6 +80,9 @@ public class DailyHealthSummary {
 
     @Column(name = "hrv_rmssd", precision = 7, scale = 2)
     private BigDecimal hrvRmssd;
+
+    @Column(name = "avg_spo2", precision = 5, scale = 2)
+    private BigDecimal avgSpo2;
 
     @Column(name = "steps")
     private Integer steps;
@@ -116,6 +125,17 @@ public class DailyHealthSummary {
         this.restingHeartRate = restingHeartRate;
         this.hrvRmssd = hrvRmssd;
         this.steps = steps;
+        this.calculatedAt = LocalDateTime.now();
+    }
+
+    public void updateReportMetrics(
+            Integer totalCaloriesBurned,
+            Integer menstrualCycleDay,
+            BigDecimal avgSpo2
+    ) {
+        this.totalCaloriesBurned = totalCaloriesBurned;
+        this.menstrualCycleDay = menstrualCycleDay;
+        this.avgSpo2 = avgSpo2;
         this.calculatedAt = LocalDateTime.now();
     }
 
