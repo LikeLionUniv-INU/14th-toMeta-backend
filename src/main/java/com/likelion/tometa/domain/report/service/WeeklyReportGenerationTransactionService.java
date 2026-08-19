@@ -22,9 +22,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.*;
+import java.time.DayOfWeek;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -34,7 +39,6 @@ import java.util.stream.IntStream;
 public class WeeklyReportGenerationTransactionService {
 
     private static final Duration GENERATION_TIMEOUT = Duration.ofMinutes(2);
-
     private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
     private static final String COMPLETED = "completed";
     private static final String GENERATING = "generating";
@@ -120,6 +124,7 @@ public class WeeklyReportGenerationTransactionService {
 
         return Preparation.pending(
                 weeklyReport.getId(),
+                weeklyReport.getGenerationStartedAt(),
                 createContext(
                         user,
                         startDate,
@@ -133,6 +138,7 @@ public class WeeklyReportGenerationTransactionService {
     @Transactional
     public WeeklyReportGenerationResponseDto complete(
             Long reportId,
+            LocalDateTime generationStartedAt,
             WeeklyReportAiResult aiResult
     ) {
         WeeklyReport weeklyReport = weeklyReportRepository
@@ -140,6 +146,22 @@ public class WeeklyReportGenerationTransactionService {
                 .orElseThrow(() -> new GeneralException(
                         GlobalErrorCode.INTERNAL_SERVER_ERROR
                 ));
+
+        if (!isCurrentGeneration(
+                weeklyReport,
+                generationStartedAt
+        )) {
+            if (COMPLETED.equals(weeklyReport.getReportStatus())) {
+                return toResponse(
+                        weeklyReport,
+                        getAnalysisContents(weeklyReport)
+                );
+            }
+
+            throw new GeneralException(
+                    ReportErrorCode.WEEKLY_REPORT_GENERATION_IN_PROGRESS
+            );
+        }
 
         weeklyReport.complete(
                 aiResult.weeklySummary(),
@@ -166,10 +188,15 @@ public class WeeklyReportGenerationTransactionService {
     }
 
     @Transactional
-    public void reset(Long reportId) {
+    public void reset(
+            Long reportId,
+            LocalDateTime generationStartedAt
+    ) {
         weeklyReportRepository.findByIdForUpdate(reportId)
-                .filter(report ->
-                        GENERATING.equals(report.getReportStatus()))
+                .filter(report -> isCurrentGeneration(
+                        report,
+                        generationStartedAt
+                ))
                 .ifPresent(WeeklyReport::markCollecting);
     }
 
@@ -304,27 +331,60 @@ public class WeeklyReportGenerationTransactionService {
 
     private void validateStartDate(LocalDate startDate) {
         if (startDate == null
-                || startDate.getDayOfWeek() != DayOfWeek.MONDAY
-                || startDate.plusDays(6)
-                .isAfter(LocalDate.now(KOREA_ZONE))) {
+                || startDate.getDayOfWeek() != DayOfWeek.MONDAY) {
+            throw new GeneralException(
+                    GlobalErrorCode.BAD_REQUEST
+            );
+        }
+
+        LocalDate endDate = startDate.plusDays(6);
+
+        if (!endDate.isBefore(LocalDate.now(KOREA_ZONE))) {
             throw new GeneralException(
                     GlobalErrorCode.BAD_REQUEST
             );
         }
     }
 
+    private boolean isGenerationExpired(
+            WeeklyReport weeklyReport
+    ) {
+        LocalDateTime generationStartedAt =
+                weeklyReport.getGenerationStartedAt();
+
+        return generationStartedAt == null
+                || generationStartedAt
+                .plus(GENERATION_TIMEOUT)
+                .isBefore(LocalDateTime.now());
+    }
+
+    private boolean isCurrentGeneration(
+            WeeklyReport weeklyReport,
+            LocalDateTime generationStartedAt
+    ) {
+        return GENERATING.equals(
+                weeklyReport.getReportStatus()
+        ) && Objects.equals(
+                weeklyReport.getGenerationStartedAt(),
+                generationStartedAt
+        );
+    }
+
     public record Preparation(
             Long reportId,
+            LocalDateTime generationStartedAt,
             WeeklyReportGenerationContext context,
             WeeklyReportGenerationResponseDto completedResponse
     ) {
 
         public static Preparation pending(
                 Long reportId,
+                LocalDateTime generationStartedAt,
                 WeeklyReportGenerationContext context
         ) {
             return new Preparation(
                     reportId,
+                    generationStartedAt,
                     context,
                     null
             );
@@ -336,6 +396,7 @@ public class WeeklyReportGenerationTransactionService {
             return new Preparation(
                     response.weeklyReportId(),
                     null,
+                    null,
                     response
             );
         }
@@ -343,15 +404,5 @@ public class WeeklyReportGenerationTransactionService {
         public boolean requiresGeneration() {
             return context != null;
         }
-    }
-
-    private boolean isGenerationExpired(WeeklyReport weeklyReport) {
-        LocalDateTime generationStartedAt =
-                weeklyReport.getGenerationStartedAt();
-
-        return generationStartedAt == null
-                || generationStartedAt
-                .plus(GENERATION_TIMEOUT)
-                .isBefore(LocalDateTime.now());
     }
 }

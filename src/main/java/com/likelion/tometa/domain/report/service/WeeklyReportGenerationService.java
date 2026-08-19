@@ -37,11 +37,13 @@ public class WeeklyReportGenerationService {
 
             return transactionService.complete(
                     preparation.reportId(),
+                    preparation.generationStartedAt(),
                     aiResult
             );
         } catch (RuntimeException e) {
             transactionService.reset(
-                    preparation.reportId()
+                    preparation.reportId(),
+                    preparation.generationStartedAt()
             );
             throw e;
         }

@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 @Getter
 @Entity
@@ -78,7 +79,8 @@ public class WeeklyReport extends BaseTimeEntity {
 
     public void markGenerating() {
         this.reportStatus = "generating";
-        this.generationStartedAt = LocalDateTime.now();
+        this.generationStartedAt = LocalDateTime.now()
+                .truncatedTo(ChronoUnit.MICROS);
     }
 
     public void markCollecting() {
