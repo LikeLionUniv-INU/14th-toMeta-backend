@@ -5,9 +5,11 @@ import com.likelion.tometa.domain.record.enums.SkinStatus;
 import com.likelion.tometa.domain.report.dto.response.DailyReportResponseDto;
 import com.likelion.tometa.domain.report.entity.DailyReport;
 import com.likelion.tometa.domain.report.repository.DailyReportRepository;
+import com.likelion.tometa.domain.tip.service.DailySkinCareTipService;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,7 @@ public class DailyReportService {
 
     private final AnonymousSessionUserResolver sessionUserResolver;
     private final DailyReportRepository dailyReportRepository;
+    private final DailySkinCareTipService dailySkinCareTipService;
 
     @Transactional
     public DailyReportResponseDto getDailyReport(
@@ -43,14 +46,17 @@ public class DailyReportService {
     }
 
     private DailyReportResponseDto toResponse(DailyReport report, User user) {
+        LocalDate reportDate = report.getDailyRecord().getRecordDate();
+
         return new DailyReportResponseDto(
-                report.getDailyRecord().getRecordDate(),
+                reportDate,
                 true,
                 toSkinCondition(report.getDailyRecord().getSkinStatus()),
                 toHealthSummary(report.getDailyHealthSummary(), user),
                 report.getAiAnalysis(),
                 report.getPersonalizedSolution(),
-                report.getNote()
+                report.getNote(),
+                getDailyTip(user, reportDate)
         );
     }
 
@@ -84,5 +90,14 @@ public class DailyReportService {
         return SkinStatus.from(skinStatus)
                 .map(SkinStatus::name)
                 .orElse(null);
+    }
+
+    private String getDailyTip(User user, LocalDate date) {
+        try {
+            return dailySkinCareTipService.assignOrGet(user, date);
+        } catch (DataIntegrityViolationException e) {
+            return dailySkinCareTipService.findAssignedTip(user, date)
+                    .orElseThrow(() -> e);
+        }
     }
 }

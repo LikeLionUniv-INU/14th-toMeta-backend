@@ -10,13 +10,15 @@ public record DailyReportResponseDto(
         HealthSummary healthSummary,
         String aiAnalysis,
         String personalizedSolution,
-        String note
+        String note,
+        String skinCareTip
 ) {
 
     public static DailyReportResponseDto notGenerated(LocalDate date) {
         return new DailyReportResponseDto(
                 date,
                 false,
+                null,
                 null,
                 null,
                 null,
