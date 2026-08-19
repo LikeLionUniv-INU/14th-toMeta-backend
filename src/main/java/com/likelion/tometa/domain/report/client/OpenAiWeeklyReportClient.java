@@ -1,0 +1,246 @@
+package com.likelion.tometa.domain.report.client;
+
+import com.likelion.tometa.domain.report.code.ReportErrorCode;
+import com.likelion.tometa.domain.report.support.WeeklyReportAiResult;
+import com.likelion.tometa.domain.report.support.WeeklyReportGenerationContext;
+import com.likelion.tometa.global.config.openai.OpenAiProperties;
+import com.likelion.tometa.global.exception.GeneralException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class OpenAiWeeklyReportClient {
+
+    private static final String INSTRUCTIONS = """
+            너는 사용자의 일주일간 피부 상태, 생활 기록, 일간 AI 분석,
+            건강 데이터를 종합하여 피부 관리 주간 리포트를 작성하는 AI다.
+
+            입력은 월요일부터 일요일까지 최대 7일의 데이터를 포함한다.
+            데이터가 없는 날짜는 분석 근거로 사용하지 않는다.
+
+            하루의 데이터만 반복해서 설명하지 말고
+            여러 날짜 사이에서 반복되거나 변화한 패턴을 우선 분석한다.
+
+            피부 상태와 생활 습관 또는 건강 데이터 사이의 관계는
+            확정적인 인과관계로 단정하지 않는다.
+
+            질병을 진단하거나 의학적 치료 및 약물 복용을 지시하지 않는다.
+            제공되지 않은 정보를 추측해서 만들지 않는다.
+
+            weeklySummary:
+            이번 주의 피부 상태와 생활 패턴을 종합한 핵심 요약을
+            1~2문장으로 작성한다.
+
+            analyses:
+            이번 주에서 의미 있는 피부 및 생활 패턴을 최대 3개 반환한다.
+            서로 같은 내용을 반복하지 않는다.
+            여러 날짜의 변화를 비교할 수 있다면 이를 우선한다.
+
+            personalizedSolution:
+            다음 주에 사용자가 실천할 수 있는 구체적인 피부 관리 및
+            생활 습관 개선 방법을 2~3문장으로 작성한다.
+
+            모든 결과는 자연스러운 한국어로 작성한다.
+            """;
+
+    private final RestClient openAiRestClient;
+    private final OpenAiProperties properties;
+    private final JsonMapper jsonMapper;
+
+    public WeeklyReportAiResult generate(
+            WeeklyReportGenerationContext context
+    ) {
+        try {
+            JsonNode response = openAiRestClient.post()
+                    .uri("/responses")
+                    .body(createRequestBody(context))
+                    .retrieve()
+                    .body(JsonNode.class);
+
+            validateResponse(response);
+
+            log.debug(
+                    "OpenAI 주간 리포트 생성 응답. status={}, usage={}",
+                    response.path("status").asText(),
+                    response.path("usage")
+            );
+
+            String outputText = extractOutputText(response);
+            ReportPayload payload =
+                    jsonMapper.readValue(outputText, ReportPayload.class);
+
+            validatePayload(payload);
+
+            return new WeeklyReportAiResult(
+                    payload.weeklySummary().trim(),
+                    payload.analyses().stream()
+                            .map(String::trim)
+                            .toList(),
+                    payload.personalizedSolution().trim()
+            );
+        } catch (RestClientException | JacksonException e) {
+            log.warn("OpenAI 주간 리포트 생성 실패: {}", e.getMessage());
+            throw new GeneralException(
+                    ReportErrorCode.WEEKLY_REPORT_AI_GENERATION_FAILED
+            );
+        }
+    }
+
+    private Map<String, Object> createRequestBody(
+            WeeklyReportGenerationContext context
+    ) throws JacksonException {
+        Map<String, Object> body = new LinkedHashMap<>();
+
+        body.put("model", properties.model());
+        body.put("reasoning", Map.of("effort", "low"));
+        body.put("instructions", INSTRUCTIONS);
+        body.put("input", jsonMapper.writeValueAsString(context));
+        body.put("text", Map.of("format", createResponseFormat()));
+        body.put("max_output_tokens", 1200);
+        body.put("store", false);
+
+        return body;
+    }
+
+    private Map<String, Object> createResponseFormat() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+
+        properties.put(
+                "weeklySummary",
+                Map.of("type", "string")
+        );
+
+        properties.put(
+                "analyses",
+                Map.of(
+                        "type", "array",
+                        "items", Map.of("type", "string"),
+                        "minItems", 1,
+                        "maxItems", 3
+                )
+        );
+
+        properties.put(
+                "personalizedSolution",
+                Map.of("type", "string")
+        );
+
+        Map<String, Object> schema = new LinkedHashMap<>();
+
+        schema.put("type", "object");
+        schema.put("properties", properties);
+        schema.put(
+                "required",
+                List.of(
+                        "weeklySummary",
+                        "analyses",
+                        "personalizedSolution"
+                )
+        );
+        schema.put("additionalProperties", false);
+
+        return Map.of(
+                "type", "json_schema",
+                "name", "weekly_report",
+                "strict", true,
+                "schema", schema
+        );
+    }
+
+    private void validateResponse(JsonNode response) {
+        if (response == null) {
+            throw new GeneralException(
+                    ReportErrorCode.WEEKLY_REPORT_AI_GENERATION_FAILED
+            );
+        }
+
+        String status = response.path("status").asText();
+
+        if (!"completed".equals(status)) {
+            log.warn(
+                    "OpenAI 주간 리포트 비정상 응답. status={}, details={}",
+                    status,
+                    response.path("incomplete_details")
+            );
+
+            throw new GeneralException(
+                    ReportErrorCode.WEEKLY_REPORT_AI_GENERATION_FAILED
+            );
+        }
+    }
+
+    private void validatePayload(ReportPayload payload) {
+        if (payload == null
+                || payload.weeklySummary() == null
+                || payload.weeklySummary().isBlank()
+                || payload.analyses() == null
+                || payload.analyses().isEmpty()
+                || payload.analyses().stream()
+                .anyMatch(value ->
+                        value == null || value.isBlank())
+                || payload.personalizedSolution() == null
+                || payload.personalizedSolution().isBlank()) {
+            throw new GeneralException(
+                    ReportErrorCode.WEEKLY_REPORT_AI_GENERATION_FAILED
+            );
+        }
+    }
+
+    private String extractOutputText(JsonNode response) {
+        JsonNode outputNode = response.path("output");
+
+        if (!outputNode.isArray()) {
+            throw new GeneralException(
+                    ReportErrorCode.WEEKLY_REPORT_AI_GENERATION_FAILED
+            );
+        }
+
+        for (JsonNode output : outputNode) {
+            if (!"message".equals(output.path("type").asText())) {
+                continue;
+            }
+
+            JsonNode contentNode = output.path("content");
+
+            if (!contentNode.isArray()) {
+                continue;
+            }
+
+            for (JsonNode content : contentNode) {
+                if (!"output_text".equals(
+                        content.path("type").asText())) {
+                    continue;
+                }
+
+                String text = content.path("text").asText();
+
+                if (!text.isBlank()) {
+                    return text;
+                }
+            }
+        }
+
+        throw new GeneralException(
+                ReportErrorCode.WEEKLY_REPORT_AI_GENERATION_FAILED
+        );
+    }
+
+    private record ReportPayload(
+            String weeklySummary,
+            List<String> analyses,
+            String personalizedSolution
+    ) {
+    }
+}
