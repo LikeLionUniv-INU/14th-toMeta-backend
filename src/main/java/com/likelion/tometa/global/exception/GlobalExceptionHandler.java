@@ -6,6 +6,7 @@ import com.likelion.tometa.global.response.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -49,6 +50,23 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(errorCode.getStatus())
                 .body(ApiResponse.failure(errorCode.getCode(), errorMessage, null));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnreadableMessageException(
+            HttpMessageNotReadableException e
+    ) {
+        GlobalErrorCode errorCode = GlobalErrorCode.BAD_REQUEST;
+
+        log.warn("Unreadable request body: {}", e.getMessage());
+
+        return ResponseEntity
+                .status(errorCode.getStatus())
+                .body(ApiResponse.failure(
+                        errorCode.getCode(),
+                        errorCode.getMessage(),
+                        null
+                ));
     }
 
     // PathVariable, RequestParam 등의 타입 변환 실패 처리

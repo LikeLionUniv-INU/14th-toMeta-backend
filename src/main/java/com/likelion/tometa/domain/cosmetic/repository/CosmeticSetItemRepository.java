@@ -26,6 +26,19 @@ public interface CosmeticSetItemRepository extends JpaRepository<CosmeticSetItem
             @Param("cosmeticSets") Collection<CosmeticSet> cosmeticSets
     );
 
+    @Query("""
+            select item
+            from CosmeticSetItem item
+            join fetch item.userCosmetic userCosmetic
+            join fetch userCosmetic.cosmeticProduct
+            where item.cosmeticSet in :cosmeticSets
+              and userCosmetic.deletedAt is null
+            order by item.cosmeticSet.id, userCosmetic.id
+            """)
+    List<CosmeticSetItem> findAllActiveByCosmeticSetsOrderBySetAndCosmeticId(
+            @Param("cosmeticSets") Collection<CosmeticSet> cosmeticSets
+    );
+
     @Modifying
     @Query("delete from CosmeticSetItem item where item.cosmeticSet = :cosmeticSet")
     void deleteAllByCosmeticSet(@Param("cosmeticSet") CosmeticSet cosmeticSet);

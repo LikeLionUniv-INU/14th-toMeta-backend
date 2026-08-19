@@ -21,21 +21,17 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
+
+import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.ALLOWED_CONTENT_TYPES;
+import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.MAX_IMAGE_COUNT;
+import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.objectKeyPrefix;
 
 @Service
 @RequiredArgsConstructor
 public class RecordImageStorageService {
 
-    private static final int MAX_IMAGE_COUNT = 3;
     private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
-
-    private static final Set<String> ALLOWED_CONTENT_TYPES = Set.of(
-            "image/jpeg",
-            "image/png",
-            "image/webp"
-    );
 
     private static final Map<String, String> EXTENSIONS = Map.of(
             "image/jpeg", "jpg",
@@ -120,7 +116,7 @@ public class RecordImageStorageService {
     }
 
     private void validateFileSize(long fileSize) {
-        if (fileSize > properties.maxUploadSizeBytes()) {
+        if (fileSize <= 0 || fileSize > properties.maxUploadSizeBytes()) {
             throw new GeneralException(RecordImageErrorCode.IMAGE_SIZE_EXCEEDED);
         }
     }
@@ -129,8 +125,8 @@ public class RecordImageStorageService {
         LocalDate today = LocalDate.now(KOREA_ZONE);
         String extension = EXTENSIONS.get(contentType);
 
-        return "skin-images/%d/%04d/%02d/%02d/%s.%s".formatted(
-                userId,
+        return "%s%04d/%02d/%02d/%s.%s".formatted(
+                objectKeyPrefix(userId),
                 today.getYear(),
                 today.getMonthValue(),
                 today.getDayOfMonth(),
@@ -138,4 +134,5 @@ public class RecordImageStorageService {
                 extension
         );
     }
+
 }

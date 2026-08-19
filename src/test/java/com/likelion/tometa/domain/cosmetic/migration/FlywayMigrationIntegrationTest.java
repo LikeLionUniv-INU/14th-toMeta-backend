@@ -36,7 +36,7 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
-        assertEquals(3, successfulMigrationCount(jdbcUrl));
+        assertEquals(4, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -58,7 +58,7 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
-        assertEquals(3, successfulMigrationCount(jdbcUrl));
+        assertEquals(4, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -97,7 +97,68 @@ class FlywayMigrationIntegrationTest {
                                 + "and created_at = timestamp '2025-01-02 03:04:05'"
                 )
         );
-        assertEquals(3, successfulMigrationCount(jdbcUrl));
+        assertEquals(4, successfulMigrationCount(jdbcUrl));
+    }
+
+    @Test
+    void migrate_backfillsDailyRecordCosmeticSortOrder() throws Exception {
+        String jdbcUrl = newJdbcUrl();
+        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                jdbcUrl,
+                USERNAME,
+                PASSWORD
+        );
+        new ResourceDatabasePopulator(
+                new ClassPathResource("db/migration/h2/V1__baseline_schema.sql")
+        ).execute(dataSource);
+        executeUpdate(jdbcUrl, """
+                insert into users (user_id, created_at, updated_at)
+                values (1, current_timestamp, current_timestamp)
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into cosmetic_products (
+                    cosmetic_product_id, created_at, updated_at,
+                    source_type, product_type, product_name
+                ) values
+                    (1, current_timestamp, current_timestamp, 'manual', 'serum', 'first'),
+                    (2, current_timestamp, current_timestamp, 'manual', 'serum', 'second')
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into user_cosmetics (
+                    user_cosmetic_id, user_id, cosmetic_product_id, created_at, updated_at
+                ) values
+                    (1, 1, 1, current_timestamp, current_timestamp),
+                    (2, 1, 2, current_timestamp, current_timestamp)
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into daily_records (
+                    daily_record_id, user_id, record_date, skin_status, created_at, updated_at
+                ) values
+                    (1, 1, date '2026-08-12', 'normal', current_timestamp, current_timestamp)
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into daily_record_cosmetics (
+                    daily_record_cosmetic_id, daily_record_id, user_cosmetic_id,
+                    usage_period, product_type_snapshot, product_name_snapshot, created_at
+                ) values
+                    (10, 1, 1, 'morning', 'serum', 'first', current_timestamp),
+                    (20, 1, 2, 'morning', 'serum', 'second', current_timestamp)
+                """);
+
+        Flyway.configure()
+                .dataSource(jdbcUrl, USERNAME, PASSWORD)
+                .locations(H2_MIGRATION_LOCATION)
+                .baselineOnMigrate(true)
+                .baselineVersion("1")
+                .load()
+                .migrate();
+
+        assertEquals(1, queryForInt(jdbcUrl,
+                "select sort_order from daily_record_cosmetics "
+                        + "where daily_record_cosmetic_id = 10"));
+        assertEquals(2, queryForInt(jdbcUrl,
+                "select sort_order from daily_record_cosmetics "
+                        + "where daily_record_cosmetic_id = 20"));
     }
 
     private void migrateAfterSignal(

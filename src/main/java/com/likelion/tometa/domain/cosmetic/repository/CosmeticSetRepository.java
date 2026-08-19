@@ -11,6 +11,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Collection;
 
 public interface CosmeticSetRepository extends JpaRepository<CosmeticSet, Long> {
 
@@ -27,6 +28,18 @@ public interface CosmeticSetRepository extends JpaRepository<CosmeticSet, Long> 
             """)
     Optional<CosmeticSet> findByIdAndUserForRead(
             @Param("id") Long id,
+            @Param("user") User user
+    );
+
+    @Query("""
+            select cosmeticSet
+            from CosmeticSet cosmeticSet
+            where cosmeticSet.id in :ids
+              and cosmeticSet.user = :user
+            order by cosmeticSet.id
+            """)
+    List<CosmeticSet> findAllByIdInAndUserOrderById(
+            @Param("ids") Collection<Long> ids,
             @Param("user") User user
     );
 

@@ -10,7 +10,19 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "daily_record_cosmetics")
+@Table(
+        name = "daily_record_cosmetics",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_daily_record_cosmetics_user_period",
+                        columnNames = {"daily_record_id", "user_cosmetic_id", "usage_period"}
+                ),
+                @UniqueConstraint(
+                        name = "uk_daily_record_cosmetics_sort",
+                        columnNames = {"daily_record_id", "usage_period", "sort_order"}
+                )
+        }
+)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DailyRecordCosmetic extends BaseCreatedEntity {
 
@@ -45,6 +57,9 @@ public class DailyRecordCosmetic extends BaseCreatedEntity {
     @Column(name = "ingredients_snapshot", columnDefinition = "json")
     private String ingredientsSnapshot;
 
+    @Column(name = "sort_order", nullable = false)
+    private int sortOrder;
+
     @Builder
     private DailyRecordCosmetic(
             DailyRecord dailyRecord,
@@ -54,7 +69,8 @@ public class DailyRecordCosmetic extends BaseCreatedEntity {
             String brandNameSnapshot,
             String productTypeSnapshot,
             String customNameSnapshot,
-            String ingredientsSnapshot
+            String ingredientsSnapshot,
+            int sortOrder
     ) {
         this.dailyRecord = dailyRecord;
         this.userCosmetic = userCosmetic;
@@ -64,5 +80,6 @@ public class DailyRecordCosmetic extends BaseCreatedEntity {
         this.productTypeSnapshot = productTypeSnapshot;
         this.customNameSnapshot = customNameSnapshot;
         this.ingredientsSnapshot = ingredientsSnapshot;
+        this.sortOrder = sortOrder;
     }
 }
