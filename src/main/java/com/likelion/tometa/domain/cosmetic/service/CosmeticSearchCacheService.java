@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 @RequiredArgsConstructor
@@ -23,23 +24,51 @@ public class CosmeticSearchCacheService {
         return searchId;
     }
 
-    public CosmeticSearchCandidate getSelectedItem(Long userId, String searchId, int itemId) {
-        CosmeticSearchCacheEntry entry = cosmeticSearchCache.getIfPresent(searchId);
+    public ConsumedSearchResult consumeSelectedItem(
+            Long userId,
+            String searchId,
+            int itemId
+    ) {
+        AtomicReference<CosmeticSearchCacheEntry> consumedEntry = new AtomicReference<>();
+        AtomicReference<CosmeticSearchCandidate> selectedCandidate = new AtomicReference<>();
 
-        if (entry == null || !entry.userId().equals(userId)) {
-            throw new GeneralException(CosmeticErrorCode.COSMETIC_SEARCH_RESULT_NOT_FOUND);
-        }
+        cosmeticSearchCache.asMap().compute(searchId, (key, entry) -> {
+            if (entry == null || !entry.userId().equals(userId)) {
+                throw new GeneralException(
+                        CosmeticErrorCode.COSMETIC_SEARCH_RESULT_NOT_FOUND
+                );
+            }
 
-        int index = itemId - 1;
+            int index = itemId - 1;
 
-        if (index < 0 || index >= entry.items().size()) {
-            throw new GeneralException(CosmeticErrorCode.COSMETIC_SEARCH_RESULT_NOT_FOUND);
-        }
+            if (index < 0 || index >= entry.items().size()) {
+                throw new GeneralException(
+                        CosmeticErrorCode.COSMETIC_SEARCH_RESULT_NOT_FOUND
+                );
+            }
 
-        return entry.items().get(index);
+            consumedEntry.set(entry);
+            selectedCandidate.set(entry.items().get(index));
+
+            return null;
+        });
+
+        return new ConsumedSearchResult(
+                consumedEntry.get(),
+                selectedCandidate.get()
+        );
     }
 
-    public void evict(String searchId) {
-        cosmeticSearchCache.invalidate(searchId);
+    public void restore(
+            String searchId,
+            CosmeticSearchCacheEntry entry
+    ) {
+        cosmeticSearchCache.asMap().putIfAbsent(searchId, entry);
+    }
+
+    public record ConsumedSearchResult(
+            CosmeticSearchCacheEntry entry,
+            CosmeticSearchCandidate candidate
+    ) {
     }
 }

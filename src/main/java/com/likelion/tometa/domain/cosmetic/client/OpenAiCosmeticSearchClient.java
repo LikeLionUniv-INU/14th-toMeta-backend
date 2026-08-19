@@ -43,9 +43,8 @@ public class OpenAiCosmeticSearchClient {
 
             productType:
             반드시 다음 값 중 하나만 사용한다.
-            skin_toner, toner_pad, mist, ampoule, serum, essence,
-            moisture_cream, soothing_cream, moisturizing_cream,
-            lotion_emulsion, eye_cream, etc
+            스킨/토너, 토너패드, 미스트, 앰플, 세럼, 에센스,
+            수분크림, 진정크림, 보습크림, 로션/에멀전, 아이크림, 기타
 
             imageUrl:
             해당 제품을 대표하는 실제 제품 이미지의 직접 URL을 반환한다.

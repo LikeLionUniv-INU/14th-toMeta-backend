@@ -37,6 +37,7 @@ import static com.likelion.tometa.domain.cosmetic.constant.CosmeticSetPolicy.MIN
 public class UserCosmeticService {
 
     private static final int MAX_MAIN_INGREDIENT_COUNT = 3;
+    private static final int MAX_SEARCH_RESPONSE_INGREDIENT_COUNT = 2;
     private static final String MANUAL_SOURCE_TYPE = "manual";
     private static final String SEARCH_SOURCE_TYPE = "search";
 
@@ -251,11 +252,14 @@ public class UserCosmeticService {
     }
 
     private List<String> createSearchResponseTags(CosmeticSearchCandidate candidate) {
-        List<String> tags = new ArrayList<>(candidate.mainIngredients().size() + 2);
+        List<String> tags = new ArrayList<>(MAX_SEARCH_RESPONSE_INGREDIENT_COUNT + 2);
 
         tags.add(candidate.productType());
         tags.add(candidate.benefit());
-        tags.addAll(candidate.mainIngredients());
+
+        candidate.mainIngredients().stream()
+                .limit(MAX_SEARCH_RESPONSE_INGREDIENT_COUNT)
+                .forEach(tags::add);
 
         return List.copyOf(tags);
     }
