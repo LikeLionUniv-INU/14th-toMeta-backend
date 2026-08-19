@@ -51,7 +51,7 @@ public class DailyReportGenerationTransactionService {
         User user = sessionUserResolver.resolve(sessionToken);
 
         DailyRecord dailyRecord = dailyRecordRepository
-                .findByUserAndRecordDate(user, date)
+                .findByUserAndRecordDateForUpdate(user, date)
                 .orElseThrow(() -> new GeneralException(
                         RecordErrorCode.DAILY_RECORD_NOT_FOUND
                 ));
