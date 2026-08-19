@@ -1,0 +1,21 @@
+create table daily_record_cosmetic_set_items (
+    daily_record_cosmetic_set_item_id bigint not null auto_increment,
+    daily_record_cosmetic_set_id bigint not null,
+    user_cosmetic_id bigint not null,
+    sort_order integer not null,
+    created_at datetime(6) not null,
+    primary key (daily_record_cosmetic_set_item_id),
+    constraint uk_daily_record_set_items_cosmetic
+        unique (daily_record_cosmetic_set_id, user_cosmetic_id),
+    constraint uk_daily_record_set_items_sort
+        unique (daily_record_cosmetic_set_id, sort_order),
+    constraint fk_daily_record_set_items_set
+        foreign key (daily_record_cosmetic_set_id)
+            references daily_record_cosmetic_sets (daily_record_cosmetic_set_id),
+    constraint fk_daily_record_set_items_user_cosmetic
+        foreign key (user_cosmetic_id)
+            references user_cosmetics (user_cosmetic_id)
+);
+
+alter table daily_reports
+    add column generation_version bigint not null default 0;

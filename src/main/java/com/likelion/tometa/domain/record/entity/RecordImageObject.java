@@ -93,6 +93,11 @@ public class RecordImageObject extends BaseTimeEntity {
         this.status = RecordImageObjectStatus.ATTACHED;
     }
 
+    public void markPending() {
+        this.status = RecordImageObjectStatus.PENDING;
+        clearCleanupClaim();
+    }
+
     public void claimCleanup(String claimToken, Instant claimedAt) {
         this.status = RecordImageObjectStatus.CLEANUP_CLAIMED;
         this.cleanupClaimToken = claimToken;

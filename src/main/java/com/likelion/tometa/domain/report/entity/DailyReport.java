@@ -66,11 +66,15 @@ public class DailyReport extends BaseTimeEntity {
     @Column(name = "regenerated_at")
     private LocalDateTime regeneratedAt;
 
+    @Column(name = "generation_version", nullable = false)
+    private long generationVersion;
+
     @Builder
     private DailyReport(DailyRecord dailyRecord, DailyHealthSummary dailyHealthSummary) {
         this.dailyRecord = dailyRecord;
         this.dailyHealthSummary = dailyHealthSummary;
         this.reportStatus = "collecting";
+        this.generationVersion = 0L;
     }
 
     public void markGenerating() {
@@ -107,5 +111,15 @@ public class DailyReport extends BaseTimeEntity {
 
     public void updateNote(String note) {
         this.note = note;
+    }
+
+    public void invalidateForRegeneration() {
+        this.generationVersion++;
+        this.reportStatus = "collecting";
+        this.aiSummary = null;
+        this.aiAnalysis = null;
+        this.personalizedSolution = null;
+        this.generatedAt = null;
+        this.regeneratedAt = null;
     }
 }

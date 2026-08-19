@@ -17,7 +17,9 @@ import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.ALLOWED_CONTENT_TYPES;
@@ -55,6 +57,65 @@ public class DailyRecordImageAttachmentService {
             throw new GeneralException(RecordImageErrorCode.IMAGE_ALREADY_USED);
         }
 
+    }
+
+    public void replace(DailyRecord dailyRecord, User user, List<String> imageKeys) {
+        validateKeys(user, imageKeys);
+
+        List<DailyRecordImage> existingImages = dailyRecordImageRepository
+                .findAllByDailyRecordOrderBySortOrderAsc(dailyRecord);
+        Map<String, DailyRecordImage> existingByKey = existingImages.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        DailyRecordImage::getObjectKey,
+                        image -> image,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        List<String> removedKeys = existingImages.stream()
+                .map(DailyRecordImage::getObjectKey)
+                .filter(key -> !imageKeys.contains(key))
+                .toList();
+        List<String> addedKeys = imageKeys.stream()
+                .filter(key -> !existingByKey.containsKey(key))
+                .toList();
+
+        List<DailyRecordImage> replacements = IntStream.range(0, imageKeys.size())
+                .mapToObj(index -> replacementImage(
+                        dailyRecord,
+                        imageKeys.get(index),
+                        index + 1,
+                        existingByKey
+                ))
+                .toList();
+
+        recordImageOwnershipService.replaceAttachments(
+                user.getId(),
+                removedKeys,
+                addedKeys
+        );
+        dailyRecordImageRepository.deleteAll(existingImages);
+        dailyRecordImageRepository.flush();
+        dailyRecordImageRepository.saveAllAndFlush(replacements);
+    }
+
+    private DailyRecordImage replacementImage(
+            DailyRecord dailyRecord,
+            String objectKey,
+            int sortOrder,
+            Map<String, DailyRecordImage> existingByKey
+    ) {
+        DailyRecordImage existing = existingByKey.get(objectKey);
+        if (existing != null) {
+            return DailyRecordImage.builder()
+                    .dailyRecord(dailyRecord)
+                    .objectKey(objectKey)
+                    .mimeType(existing.getMimeType())
+                    .fileSize(existing.getFileSize())
+                    .sortOrder(sortOrder)
+                    .build();
+        }
+        return createImage(dailyRecord, objectKey, sortOrder);
     }
 
     private DailyRecordImage createImage(

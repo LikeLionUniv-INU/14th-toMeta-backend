@@ -275,6 +275,63 @@ class DailyRecordImageAttachmentServiceTest {
         verify(s3Client, never()).headObject(any(HeadObjectRequest.class));
     }
 
+    @Test
+    void replace_preservesRetainedMetadataAndTransitionsAddedAndRemovedKeys() {
+        String retainedKey = "skin-images/1/retained.jpg";
+        String removedKey = "skin-images/1/removed.jpg";
+        String addedKey = "skin-images/1/added.jpg";
+        DailyRecordImage retained = DailyRecordImage.builder()
+                .dailyRecord(dailyRecord)
+                .objectKey(retainedKey)
+                .mimeType("image/webp")
+                .fileSize(123L)
+                .sortOrder(1)
+                .build();
+        DailyRecordImage removed = DailyRecordImage.builder()
+                .dailyRecord(dailyRecord)
+                .objectKey(removedKey)
+                .mimeType("image/jpeg")
+                .fileSize(456L)
+                .sortOrder(2)
+                .build();
+        when(dailyRecordImageRepository
+                .findAllByDailyRecordOrderBySortOrderAsc(dailyRecord))
+                .thenReturn(List.of(retained, removed));
+        when(s3Client.headObject(any(HeadObjectRequest.class)))
+                .thenReturn(HeadObjectResponse.builder()
+                        .contentType("image/png")
+                        .contentLength(789L)
+                        .build());
+
+        service.replace(
+                dailyRecord,
+                user,
+                List.of(addedKey, retainedKey)
+        );
+
+        verify(recordImageOwnershipService).replaceAttachments(
+                1L,
+                List.of(removedKey),
+                List.of(addedKey)
+        );
+        verify(dailyRecordImageRepository).deleteAll(List.of(retained, removed));
+        ArgumentCaptor<Iterable<DailyRecordImage>> captor = iterableCaptor();
+        verify(dailyRecordImageRepository).saveAllAndFlush(captor.capture());
+        List<DailyRecordImage> replacements = StreamSupport
+                .stream(captor.getValue().spliterator(), false)
+                .toList();
+        assertEquals(List.of(addedKey, retainedKey), replacements.stream()
+                .map(DailyRecordImage::getObjectKey)
+                .toList());
+        assertEquals(List.of(789L, 123L), replacements.stream()
+                .map(DailyRecordImage::getFileSize)
+                .toList());
+        assertEquals(List.of(1, 2), replacements.stream()
+                .map(DailyRecordImage::getSortOrder)
+                .toList());
+        verify(s3Client, times(1)).headObject(any(HeadObjectRequest.class));
+    }
+
     @SuppressWarnings({"unchecked", "rawtypes"})
     private ArgumentCaptor<Iterable<DailyRecordImage>> iterableCaptor() {
         return (ArgumentCaptor) ArgumentCaptor.forClass(Iterable.class);

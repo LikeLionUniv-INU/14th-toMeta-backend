@@ -12,16 +12,20 @@ import com.likelion.tometa.domain.cosmetic.repository.CosmeticTagRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
 import com.likelion.tometa.domain.record.code.RecordErrorCode;
 import com.likelion.tometa.domain.record.dto.request.DailyRecordCreateRequestDto;
+import com.likelion.tometa.domain.record.dto.request.DailyRecordUpdateRequestDto;
 import com.likelion.tometa.domain.record.dto.response.DailyRecordCreateResponseDto;
 import com.likelion.tometa.domain.record.dto.response.DailyRecordDetailResponseDto;
+import com.likelion.tometa.domain.record.dto.response.DailyRecordUpdateResponseDto;
 import com.likelion.tometa.domain.record.entity.DailyRecord;
 import com.likelion.tometa.domain.record.entity.DailyRecordCosmetic;
 import com.likelion.tometa.domain.record.entity.DailyRecordCosmeticSet;
+import com.likelion.tometa.domain.record.entity.DailyRecordCosmeticSetItem;
 import com.likelion.tometa.domain.record.entity.DailyRecordImage;
 import com.likelion.tometa.domain.record.entity.DailyRecordSelection;
 import com.likelion.tometa.domain.record.enums.DailyRecordSelectionType;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticSetRepository;
+import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticSetItemRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordImageRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordSelectionRepository;
@@ -44,6 +48,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -51,6 +56,7 @@ import java.util.Set;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -74,6 +80,8 @@ class DailyRecordServiceTest {
     private DailyRecordCosmeticRepository dailyRecordCosmeticRepository;
     @Mock
     private DailyRecordCosmeticSetRepository dailyRecordCosmeticSetRepository;
+    @Mock
+    private DailyRecordCosmeticSetItemRepository dailyRecordCosmeticSetItemRepository;
     @Mock
     private DailyRecordSelectionRepository dailyRecordSelectionRepository;
     @Mock
@@ -169,6 +177,15 @@ class DailyRecordServiceTest {
                 .toList());
         assertEquals(List.of(1, 2), savedSets.stream()
                 .map(DailyRecordCosmeticSet::getSortOrder)
+                .toList());
+
+        ArgumentCaptor<Iterable<DailyRecordCosmeticSetItem>> setItemCaptor =
+                iterableCaptor();
+        verify(dailyRecordCosmeticSetItemRepository).saveAll(setItemCaptor.capture());
+        List<DailyRecordCosmeticSetItem> savedSetItems = toList(
+                setItemCaptor.getValue());
+        assertEquals(List.of(5L, 9L, 5L, 12L), savedSetItems.stream()
+                .map(item -> item.getUserCosmetic().getId())
                 .toList());
 
         ArgumentCaptor<Iterable<DailyRecordCosmetic>> cosmeticCaptor = iterableCaptor();
@@ -505,6 +522,307 @@ class DailyRecordServiceTest {
         assertSame(RecordErrorCode.DAILY_RECORD_NOT_FOUND, exception.getErrorCode());
     }
 
+    @Test
+    void update_clearsMemoAndInvalidatesExistingReportWithoutReplacingSelections() {
+        LocalDate date = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        UserCosmetic cosmetic = userCosmetic(12L);
+        DailyRecord record = dailyRecord(date, "normal", null, "old memo");
+        DailyRecordSelection selection = selection(
+                record,
+                DailyRecordSelectionType.COSMETIC,
+                cosmetic.getId(),
+                "product-12",
+                List.of("hydrating"),
+                1
+        );
+        DailyRecordCosmetic cosmeticSnapshot = cosmeticSnapshot(
+                record,
+                cosmetic,
+                "morning",
+                1
+        );
+        DailyReport report = DailyReport.builder().dailyRecord(record).build();
+        report.updateNote("keep this note");
+        ReflectionTestUtils.setField(report, "reportStatus", "completed");
+        ReflectionTestUtils.setField(report, "aiSummary", "old summary");
+        ReflectionTestUtils.setField(report, "aiAnalysis", "old analysis");
+        ReflectionTestUtils.setField(report, "personalizedSolution", "old solution");
+        ReflectionTestUtils.setField(report, "generatedAt", LocalDateTime.now());
+        ReflectionTestUtils.setField(report, "regeneratedAt", LocalDateTime.now());
+
+        when(dailyRecordRepository.findByUserAndRecordDateForUpdate(user, date))
+                .thenReturn(Optional.of(record));
+        when(dailyRecordSelectionRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(selection));
+        when(dailyRecordCosmeticSetRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticSetItemRepository
+                .findAllByDailyRecordCosmeticSet_DailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(cosmeticSnapshot));
+        when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+                .thenReturn(List.of());
+        when(dailyReportRepository.findByDailyRecord(record))
+                .thenReturn(Optional.of(report));
+
+        DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
+        request.setMemo(null);
+
+        DailyRecordUpdateResponseDto result = dailyRecordService.update(
+                date,
+                request,
+                SESSION_TOKEN
+        );
+
+        assertEquals(37L, result.recordId());
+        assertNull(record.getMemo());
+        assertEquals(1L, report.getGenerationVersion());
+        assertEquals("collecting", report.getReportStatus());
+        assertNull(report.getAiSummary());
+        assertNull(report.getAiAnalysis());
+        assertNull(report.getPersonalizedSolution());
+        assertNull(report.getGeneratedAt());
+        assertNull(report.getRegeneratedAt());
+        assertEquals("keep this note", report.getNote());
+        verify(dailyRecordSelectionRepository, never()).deleteAll(any());
+        verify(imageAttachmentService, never()).replace(any(), any(), any());
+    }
+
+    @Test
+    void update_noOpDoesNotInvalidateReport() {
+        LocalDate date = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        UserCosmetic cosmetic = userCosmetic(12L);
+        DailyRecord record = dailyRecord(date, "normal", null, "same memo");
+        DailyRecordSelection selection = selection(
+                record,
+                DailyRecordSelectionType.COSMETIC,
+                cosmetic.getId(),
+                "product-12",
+                List.of(),
+                1
+        );
+
+        when(dailyRecordRepository.findByUserAndRecordDateForUpdate(user, date))
+                .thenReturn(Optional.of(record));
+        when(dailyRecordSelectionRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(selection));
+        when(dailyRecordCosmeticSetRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticSetItemRepository
+                .findAllByDailyRecordCosmeticSet_DailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
+        when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+                .thenReturn(List.of());
+
+        DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
+        request.setMemo("  same memo  ");
+
+        dailyRecordService.update(date, request, SESSION_TOKEN);
+
+        verify(dailyReportRepository, never()).findByDailyRecord(any());
+        verify(dailyReportRepository, never()).save(any());
+    }
+
+    @Test
+    void update_rejectsRemovingRequiredMemoForBadSkinStatus() {
+        LocalDate date = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        UserCosmetic cosmetic = userCosmetic(12L);
+        DailyRecord record = dailyRecord(date, "bad", null, "required memo");
+        when(dailyRecordRepository.findByUserAndRecordDateForUpdate(user, date))
+                .thenReturn(Optional.of(record));
+        when(dailyRecordSelectionRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(selection(
+                        record,
+                        DailyRecordSelectionType.COSMETIC,
+                        12L,
+                        "product-12",
+                        List.of(),
+                        1
+                )));
+        when(dailyRecordCosmeticRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
+
+        DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
+        request.setMemo(null);
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> dailyRecordService.update(date, request, SESSION_TOKEN)
+        );
+
+        assertSame(GlobalErrorCode.BAD_REQUEST, exception.getErrorCode());
+    }
+
+    @Test
+    void update_replacesProvidedDirectSelectionAndRebuildsSnapshots() throws Exception {
+        LocalDate date = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        UserCosmetic oldCosmetic = userCosmetic(12L);
+        UserCosmetic newCosmetic = userCosmetic(22L);
+        DailyRecord record = dailyRecord(date, "normal", null, null);
+        DailyRecordSelection oldSelection = selection(
+                record,
+                DailyRecordSelectionType.COSMETIC,
+                oldCosmetic.getId(),
+                "product-12",
+                List.of("old"),
+                1
+        );
+        DailyRecordCosmetic oldSnapshot = cosmeticSnapshot(
+                record,
+                oldCosmetic,
+                "morning",
+                1
+        );
+        DailyReport report = DailyReport.builder().dailyRecord(record).build();
+
+        when(dailyRecordRepository.findByUserAndRecordDateForUpdate(user, date))
+                .thenReturn(Optional.of(record));
+        when(dailyRecordSelectionRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(oldSelection));
+        when(dailyRecordCosmeticSetRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticSetItemRepository
+                .findAllByDailyRecordCosmeticSet_DailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(oldSnapshot));
+        when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+                .thenReturn(List.of());
+        when(userCosmeticRepository.findAllActiveByIdsAndUserForRecord(
+                Set.of(22L),
+                user
+        )).thenReturn(List.of(newCosmetic));
+        when(objectMapper.writeValueAsString(any())).thenReturn("[]");
+        when(dailyReportRepository.findByDailyRecord(record))
+                .thenReturn(Optional.of(report));
+
+        DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
+        request.setMorningCosmeticIds(List.of(22L));
+
+        dailyRecordService.update(date, request, SESSION_TOKEN);
+
+        verify(dailyRecordSelectionRepository).deleteAll(List.of(oldSelection));
+        verify(dailyRecordCosmeticRepository).deleteAll(List.of(oldSnapshot));
+        ArgumentCaptor<Iterable<DailyRecordSelection>> selectionCaptor =
+                iterableCaptor();
+        verify(dailyRecordSelectionRepository).saveAll(selectionCaptor.capture());
+        assertEquals(List.of(22L), toList(selectionCaptor.getValue()).stream()
+                .map(DailyRecordSelection::getSourceId)
+                .toList());
+        ArgumentCaptor<Iterable<DailyRecordCosmetic>> cosmeticCaptor =
+                iterableCaptor();
+        verify(dailyRecordCosmeticRepository).saveAll(cosmeticCaptor.capture());
+        assertEquals(List.of(22L), toList(cosmeticCaptor.getValue()).stream()
+                .map(snapshot -> snapshot.getUserCosmetic().getId())
+                .toList());
+        assertEquals(1L, report.getGenerationVersion());
+    }
+
+    @Test
+    void update_preservesOmittedSetAndItsMemberSnapshot() throws Exception {
+        LocalDate date = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        UserCosmetic setMember = userCosmetic(5L);
+        UserCosmetic oldDirect = userCosmetic(12L);
+        UserCosmetic newDirect = userCosmetic(22L);
+        DailyRecord record = dailyRecord(date, "normal", null, null);
+        DailyRecordCosmeticSet setSnapshot = DailyRecordCosmeticSet.builder()
+                .dailyRecord(record)
+                .sourceCosmeticSetId(3L)
+                .setNameSnapshot("historic set name")
+                .setUsageTimeSnapshot("morning")
+                .usagePeriod("morning")
+                .sortOrder(1)
+                .build();
+        ReflectionTestUtils.setField(setSnapshot, "id", 103L);
+        DailyRecordCosmeticSetItem setItemSnapshot =
+                DailyRecordCosmeticSetItem.builder()
+                        .dailyRecordCosmeticSet(setSnapshot)
+                        .userCosmetic(setMember)
+                        .sortOrder(1)
+                        .build();
+        DailyRecordSelection setSelection = selection(
+                record,
+                DailyRecordSelectionType.SET,
+                3L,
+                "historic set name",
+                List.of("historic tag"),
+                1
+        );
+        DailyRecordSelection directSelection = selection(
+                record,
+                DailyRecordSelectionType.COSMETIC,
+                12L,
+                "product-12",
+                List.of(),
+                1
+        );
+        DailyRecordCosmetic memberSnapshot = cosmeticSnapshot(
+                record,
+                setMember,
+                "morning",
+                1
+        );
+        DailyRecordCosmetic directSnapshot = cosmeticSnapshot(
+                record,
+                oldDirect,
+                "morning",
+                2
+        );
+        DailyReport report = DailyReport.builder().dailyRecord(record).build();
+
+        when(dailyRecordRepository.findByUserAndRecordDateForUpdate(user, date))
+                .thenReturn(Optional.of(record));
+        when(dailyRecordSelectionRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(setSelection, directSelection));
+        when(dailyRecordCosmeticSetRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(setSnapshot));
+        when(dailyRecordCosmeticSetItemRepository
+                .findAllByDailyRecordCosmeticSet_DailyRecord(record))
+                .thenReturn(List.of(setItemSnapshot));
+        when(dailyRecordCosmeticRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(memberSnapshot, directSnapshot));
+        when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+                .thenReturn(List.of());
+        when(userCosmeticRepository.findAllActiveByIdsAndUserForRecord(
+                Set.of(22L),
+                user
+        )).thenReturn(List.of(newDirect));
+        when(objectMapper.writeValueAsString(any())).thenReturn("[]");
+        when(dailyReportRepository.findByDailyRecord(record))
+                .thenReturn(Optional.of(report));
+
+        DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
+        request.setMorningCosmeticIds(List.of(22L));
+
+        dailyRecordService.update(date, request, SESSION_TOKEN);
+
+        ArgumentCaptor<Iterable<DailyRecordCosmeticSet>> setCaptor = iterableCaptor();
+        verify(dailyRecordCosmeticSetRepository).saveAll(setCaptor.capture());
+        DailyRecordCosmeticSet preservedSet = toList(setCaptor.getValue()).getFirst();
+        assertEquals(3L, preservedSet.getSourceCosmeticSetId());
+        assertEquals("historic set name", preservedSet.getSetNameSnapshot());
+
+        ArgumentCaptor<Iterable<DailyRecordCosmeticSetItem>> itemCaptor =
+                iterableCaptor();
+        verify(dailyRecordCosmeticSetItemRepository).saveAll(itemCaptor.capture());
+        assertEquals(List.of(5L), toList(itemCaptor.getValue()).stream()
+                .map(item -> item.getUserCosmetic().getId())
+                .toList());
+
+        ArgumentCaptor<Iterable<DailyRecordCosmetic>> cosmeticCaptor =
+                iterableCaptor();
+        verify(dailyRecordCosmeticRepository).saveAll(cosmeticCaptor.capture());
+        List<DailyRecordCosmetic> rebuilt = toList(cosmeticCaptor.getValue());
+        assertEquals(List.of(5L, 22L), rebuilt.stream()
+                .map(snapshot -> snapshot.getUserCosmetic().getId())
+                .toList());
+        assertEquals(memberSnapshot.getProductNameSnapshot(),
+                rebuilt.getFirst().getProductNameSnapshot());
+    }
+
     private DailyRecordCreateRequestDto request(
             String skinStatus,
             List<Long> morningCosmeticIds,
@@ -524,6 +842,43 @@ class DailyRecordServiceTest {
                 List.of(),
                 memo
         );
+    }
+
+    private DailyRecord dailyRecord(
+            LocalDate date,
+            String skinStatus,
+            String foodMemo,
+            String memo
+    ) {
+        DailyRecord record = DailyRecord.builder()
+                .user(user)
+                .recordDate(date)
+                .skinStatus(skinStatus)
+                .foodMemo(foodMemo)
+                .memo(memo)
+                .build();
+        ReflectionTestUtils.setField(record, "id", 37L);
+        return record;
+    }
+
+    private DailyRecordCosmetic cosmeticSnapshot(
+            DailyRecord record,
+            UserCosmetic cosmetic,
+            String usagePeriod,
+            int sortOrder
+    ) {
+        CosmeticProduct product = cosmetic.getCosmeticProduct();
+        return DailyRecordCosmetic.builder()
+                .dailyRecord(record)
+                .userCosmetic(cosmetic)
+                .usagePeriod(usagePeriod)
+                .productNameSnapshot(product.getProductName())
+                .brandNameSnapshot(product.getBrandName())
+                .productTypeSnapshot(product.getProductType())
+                .customNameSnapshot(cosmetic.getCustomName())
+                .ingredientsSnapshot("[]")
+                .sortOrder(sortOrder)
+                .build();
     }
 
     private UserCosmetic userCosmetic(Long id) {
