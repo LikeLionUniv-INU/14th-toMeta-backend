@@ -26,7 +26,10 @@ insert into daily_record_cosmetic_set_items (
 select
     record_set.daily_record_cosmetic_set_id,
     set_item.user_cosmetic_id,
-    set_item.item_order,
+    row_number() over (
+        partition by record_set.daily_record_cosmetic_set_id
+        order by set_item.item_order, set_item.cosmetic_set_item_id
+    ),
     record_set.created_at
 from daily_record_cosmetic_sets record_set
 join cosmetic_set_items set_item

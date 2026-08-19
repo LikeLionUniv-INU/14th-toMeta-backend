@@ -2,12 +2,15 @@ package com.likelion.tometa.domain.report.service;
 
 import com.likelion.tometa.domain.health.entity.DailyHealthSummary;
 import com.likelion.tometa.domain.record.enums.SkinStatus;
+import com.likelion.tometa.domain.report.code.ReportErrorCode;
+import com.likelion.tometa.domain.report.dto.request.DailyReportNoteUpdateRequestDto;
 import com.likelion.tometa.domain.report.dto.response.DailyReportResponseDto;
 import com.likelion.tometa.domain.report.entity.DailyReport;
 import com.likelion.tometa.domain.report.repository.DailyReportRepository;
 import com.likelion.tometa.domain.tip.service.DailySkinCareTipService;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
+import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -45,6 +48,31 @@ public class DailyReportService {
                 .orElseGet(() -> DailyReportResponseDto.notGenerated(date));
     }
 
+    @Transactional
+    public void updateNote(
+            LocalDate date,
+            DailyReportNoteUpdateRequestDto request,
+            String sessionToken
+    ) {
+        User user = sessionUserResolver.resolve(sessionToken);
+
+        DailyReport dailyReport = dailyReportRepository
+                .findByDailyRecord_UserAndDailyRecord_RecordDateAndReportStatus(
+                        user,
+                        date,
+                        COMPLETED_REPORT_STATUS
+                )
+                .orElseThrow(() -> new GeneralException(
+                        ReportErrorCode.DAILY_REPORT_NOT_FOUND
+                ));
+
+        String note = request.note().isBlank()
+                ? null
+                : request.note();
+
+        dailyReport.updateNote(note);
+    }
+
     private DailyReportResponseDto toResponse(DailyReport report, User user) {
         LocalDate reportDate = report.getDailyRecord().getRecordDate();
 
@@ -69,6 +97,7 @@ public class DailyReportService {
         }
 
         DailyReportResponseDto.MenstrualCycle menstrualCycle = null;
+
         if (FEMALE.equals(user.getGender())) {
             menstrualCycle = new DailyReportResponseDto.MenstrualCycle(
                     summary.getMenstrualCycleDay(),

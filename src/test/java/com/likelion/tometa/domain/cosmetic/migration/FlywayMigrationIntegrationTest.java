@@ -214,12 +214,16 @@ class FlywayMigrationIntegrationTest {
                 )
                 """);
         executeUpdate(jdbcUrl, """
+                alter table cosmetic_set_items
+                    drop constraint uk_cosmetic_set_items_set_order
+                """);
+        executeUpdate(jdbcUrl, """
                 insert into cosmetic_set_items (
                     cosmetic_set_item_id, cosmetic_set_id,
                     user_cosmetic_id, item_order, created_at
                 ) values
                     (11, 10, 1, 1, current_timestamp),
-                    (12, 10, 2, 2, current_timestamp),
+                    (12, 10, 2, 1, current_timestamp),
                     (13, 10, 3, 3, current_timestamp)
                 """);
         executeUpdate(jdbcUrl, """

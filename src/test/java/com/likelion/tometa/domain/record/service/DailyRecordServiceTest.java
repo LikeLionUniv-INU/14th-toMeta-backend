@@ -187,6 +187,9 @@ class DailyRecordServiceTest {
         assertEquals(List.of(5L, 9L, 5L, 12L), savedSetItems.stream()
                 .map(item -> item.getUserCosmetic().getId())
                 .toList());
+        assertEquals(List.of(1, 2, 1, 2), savedSetItems.stream()
+                .map(DailyRecordCosmeticSetItem::getSortOrder)
+                .toList());
 
         ArgumentCaptor<Iterable<DailyRecordCosmetic>> cosmeticCaptor = iterableCaptor();
         verify(dailyRecordCosmeticRepository).saveAll(cosmeticCaptor.capture());
@@ -1012,12 +1015,15 @@ class DailyRecordServiceTest {
         DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
         request.setMorningCosmeticIds(List.of(22L));
 
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
+        GeneralException exception = assertThrows(
+                GeneralException.class,
                 () -> dailyRecordService.update(date, request, SESSION_TOKEN)
         );
 
-        assertEquals("Missing set member snapshot", exception.getMessage());
+        assertSame(
+                RecordErrorCode.DAILY_RECORD_SNAPSHOT_INCOMPLETE,
+                exception.getErrorCode()
+        );
         verify(dailyRecordCosmeticSetItemRepository, never()).deleteAll(any());
         verify(dailyRecordCosmeticSetRepository, never()).deleteAll(any());
         verify(dailyRecordSelectionRepository, never()).deleteAll(any());

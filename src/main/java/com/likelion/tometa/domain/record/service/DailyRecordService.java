@@ -486,12 +486,14 @@ public class DailyRecordService {
                             set.getSourceCosmeticSetId()
                     ));
                     if (selection == null) {
-                        throw new IllegalStateException("Missing set selection snapshot");
+                        throw new GeneralException(
+                                RecordErrorCode.DAILY_RECORD_SNAPSHOT_INCOMPLETE);
                     }
                     List<DailyRecordCosmeticSetItem> itemSnapshots =
                             itemsBySetId.get(set.getId());
                     if (itemSnapshots == null || itemSnapshots.isEmpty()) {
-                        throw new IllegalStateException("Missing set member snapshot");
+                        throw new GeneralException(
+                                RecordErrorCode.DAILY_RECORD_SNAPSHOT_INCOMPLETE);
                     }
                     List<UserCosmetic> members = itemSnapshots
                             .stream()
@@ -506,7 +508,8 @@ public class DailyRecordService {
                             ))
                             .anyMatch(key -> !cosmeticSnapshotKeys.contains(key));
                     if (missingCosmeticSnapshot) {
-                        throw new IllegalStateException("Missing set cosmetic snapshot");
+                        throw new GeneralException(
+                                RecordErrorCode.DAILY_RECORD_SNAPSHOT_INCOMPLETE);
                     }
                     return new SetChoice(
                             period,
