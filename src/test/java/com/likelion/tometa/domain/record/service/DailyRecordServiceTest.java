@@ -833,7 +833,8 @@ class DailyRecordServiceTest {
     @Test
     void update_preservesOmittedSetAndItsMemberSnapshot() throws Exception {
         LocalDate date = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
-        UserCosmetic setMember = userCosmetic(5L);
+        UserCosmetic firstSetMember = userCosmetic(5L);
+        UserCosmetic secondSetMember = userCosmetic(6L);
         UserCosmetic oldDirect = userCosmetic(12L);
         UserCosmetic newDirect = userCosmetic(22L);
         DailyRecord record = dailyRecord(date, "normal", null, null);
@@ -849,8 +850,14 @@ class DailyRecordServiceTest {
         DailyRecordCosmeticSetItem setItemSnapshot =
                 DailyRecordCosmeticSetItem.builder()
                         .dailyRecordCosmeticSet(setSnapshot)
-                        .userCosmetic(setMember)
+                        .userCosmetic(firstSetMember)
                         .sortOrder(1)
+                        .build();
+        DailyRecordCosmeticSetItem secondSetItemSnapshot =
+                DailyRecordCosmeticSetItem.builder()
+                        .dailyRecordCosmeticSet(setSnapshot)
+                        .userCosmetic(secondSetMember)
+                        .sortOrder(2)
                         .build();
         DailyRecordSelection setSelection = selection(
                 record,
@@ -870,15 +877,21 @@ class DailyRecordServiceTest {
         );
         DailyRecordCosmetic memberSnapshot = cosmeticSnapshot(
                 record,
-                setMember,
+                firstSetMember,
                 "morning",
                 1
+        );
+        DailyRecordCosmetic secondMemberSnapshot = cosmeticSnapshot(
+                record,
+                secondSetMember,
+                "morning",
+                2
         );
         DailyRecordCosmetic directSnapshot = cosmeticSnapshot(
                 record,
                 oldDirect,
                 "morning",
-                2
+                3
         );
         DailyReport report = DailyReport.builder().dailyRecord(record).build();
 
@@ -890,10 +903,14 @@ class DailyRecordServiceTest {
                 .thenReturn(List.of(setSnapshot));
         when(dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
-                .thenReturn(List.of(setItemSnapshot));
+                .thenReturn(List.of(setItemSnapshot, secondSetItemSnapshot));
         when(dailyRecordCosmeticRepository
                 .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(record))
-                .thenReturn(List.of(memberSnapshot, directSnapshot));
+                .thenReturn(List.of(
+                        memberSnapshot,
+                        secondMemberSnapshot,
+                        directSnapshot
+                ));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of());
         when(userCosmeticRepository.findAllActiveByIdsAndUserForRecord(
@@ -918,7 +935,7 @@ class DailyRecordServiceTest {
         ArgumentCaptor<Iterable<DailyRecordCosmeticSetItem>> itemCaptor =
                 iterableCaptor();
         verify(dailyRecordCosmeticSetItemRepository).saveAll(itemCaptor.capture());
-        assertEquals(List.of(5L), toList(itemCaptor.getValue()).stream()
+        assertEquals(List.of(5L, 6L), toList(itemCaptor.getValue()).stream()
                 .map(item -> item.getUserCosmetic().getId())
                 .toList());
 
@@ -926,11 +943,85 @@ class DailyRecordServiceTest {
                 iterableCaptor();
         verify(dailyRecordCosmeticRepository).saveAll(cosmeticCaptor.capture());
         List<DailyRecordCosmetic> rebuilt = toList(cosmeticCaptor.getValue());
-        assertEquals(List.of(5L, 22L), rebuilt.stream()
+        assertEquals(List.of(5L, 6L, 22L), rebuilt.stream()
                 .map(snapshot -> snapshot.getUserCosmetic().getId())
                 .toList());
         assertEquals(memberSnapshot.getProductNameSnapshot(),
                 rebuilt.getFirst().getProductNameSnapshot());
+        assertEquals(secondMemberSnapshot.getProductNameSnapshot(),
+                rebuilt.get(1).getProductNameSnapshot());
+    }
+
+    @Test
+    void update_rejectsOmittedSetWhenMemberSnapshotIsMissing() {
+        LocalDate date = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        UserCosmetic oldDirect = userCosmetic(12L);
+        UserCosmetic newDirect = userCosmetic(22L);
+        DailyRecord record = dailyRecord(date, "normal", null, null);
+        DailyRecordCosmeticSet setSnapshot = DailyRecordCosmeticSet.builder()
+                .dailyRecord(record)
+                .sourceCosmeticSetId(3L)
+                .setNameSnapshot("historic set name")
+                .setUsageTimeSnapshot("morning")
+                .usagePeriod("morning")
+                .sortOrder(1)
+                .build();
+        ReflectionTestUtils.setField(setSnapshot, "id", 103L);
+        DailyRecordSelection setSelection = selection(
+                record,
+                DailyRecordSelectionType.SET,
+                3L,
+                "historic set name",
+                List.of("historic tag"),
+                1
+        );
+        DailyRecordSelection directSelection = selection(
+                record,
+                DailyRecordSelectionType.COSMETIC,
+                12L,
+                "product-12",
+                List.of(),
+                1
+        );
+        DailyRecordCosmetic directSnapshot = cosmeticSnapshot(
+                record,
+                oldDirect,
+                "morning",
+                1
+        );
+
+        when(dailyRecordRepository.findByUserAndRecordDateForUpdate(user, date))
+                .thenReturn(Optional.of(record));
+        when(dailyRecordSelectionRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(setSelection, directSelection));
+        when(dailyRecordCosmeticSetRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(setSnapshot));
+        when(dailyRecordCosmeticSetItemRepository
+                .findAllByDailyRecordCosmeticSet_DailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticRepository
+                .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(record))
+                .thenReturn(List.of(directSnapshot));
+        when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+                .thenReturn(List.of());
+        when(userCosmeticRepository.findAllActiveByIdsAndUserForRecord(
+                Set.of(22L),
+                user
+        )).thenReturn(List.of(newDirect));
+
+        DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
+        request.setMorningCosmeticIds(List.of(22L));
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class,
+                () -> dailyRecordService.update(date, request, SESSION_TOKEN)
+        );
+
+        assertEquals("Missing set member snapshot", exception.getMessage());
+        verify(dailyRecordCosmeticSetItemRepository, never()).deleteAll(any());
+        verify(dailyRecordCosmeticSetRepository, never()).deleteAll(any());
+        verify(dailyRecordSelectionRepository, never()).deleteAll(any());
+        verify(dailyRecordCosmeticRepository, never()).deleteAll(any());
     }
 
     private DailyRecordCreateRequestDto request(

@@ -469,6 +469,12 @@ public class DailyRecordService {
                 .stream()
                 .collect(Collectors.groupingBy(item ->
                         item.getDailyRecordCosmeticSet().getId()));
+        Set<String> cosmeticSnapshotKeys = existing.cosmetics().stream()
+                .map(cosmetic -> cosmeticKey(
+                        cosmetic.getUsagePeriod(),
+                        cosmetic.getUserCosmetic().getId()
+                ))
+                .collect(Collectors.toSet());
 
         return existing.sets().stream()
                 .filter(set -> set.getUsagePeriod().equals(period.getValue()))
@@ -482,13 +488,26 @@ public class DailyRecordService {
                     if (selection == null) {
                         throw new IllegalStateException("Missing set selection snapshot");
                     }
-                    List<UserCosmetic> members = itemsBySetId
-                            .getOrDefault(set.getId(), List.of())
+                    List<DailyRecordCosmeticSetItem> itemSnapshots =
+                            itemsBySetId.get(set.getId());
+                    if (itemSnapshots == null || itemSnapshots.isEmpty()) {
+                        throw new IllegalStateException("Missing set member snapshot");
+                    }
+                    List<UserCosmetic> members = itemSnapshots
                             .stream()
                             .sorted(Comparator.comparingInt(
                                     DailyRecordCosmeticSetItem::getSortOrder))
                             .map(DailyRecordCosmeticSetItem::getUserCosmetic)
                             .toList();
+                    boolean missingCosmeticSnapshot = members.stream()
+                            .map(member -> cosmeticKey(
+                                    period.getValue(),
+                                    member.getId()
+                            ))
+                            .anyMatch(key -> !cosmeticSnapshotKeys.contains(key));
+                    if (missingCosmeticSnapshot) {
+                        throw new IllegalStateException("Missing set cosmetic snapshot");
+                    }
                     return new SetChoice(
                             period,
                             set.getSourceCosmeticSetId(),

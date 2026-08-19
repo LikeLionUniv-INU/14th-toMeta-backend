@@ -17,5 +17,24 @@ create table daily_record_cosmetic_set_items (
             references user_cosmetics (user_cosmetic_id)
 );
 
+insert into daily_record_cosmetic_set_items (
+    daily_record_cosmetic_set_id,
+    user_cosmetic_id,
+    sort_order,
+    created_at
+)
+select
+    record_set.daily_record_cosmetic_set_id,
+    set_item.user_cosmetic_id,
+    set_item.item_order,
+    record_set.created_at
+from daily_record_cosmetic_sets record_set
+join cosmetic_set_items set_item
+    on set_item.cosmetic_set_id = record_set.source_cosmetic_set_id
+join daily_record_cosmetics record_cosmetic
+    on record_cosmetic.daily_record_id = record_set.daily_record_id
+    and record_cosmetic.user_cosmetic_id = set_item.user_cosmetic_id
+    and record_cosmetic.usage_period = record_set.usage_period;
+
 alter table daily_reports
     add column generation_version bigint default 0 not null;
