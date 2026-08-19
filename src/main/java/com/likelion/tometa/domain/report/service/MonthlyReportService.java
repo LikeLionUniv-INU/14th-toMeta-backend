@@ -74,10 +74,11 @@ public class MonthlyReportService {
 
         List<MonthlyReportListResponseDto.WeeklyReportItem> weeklyReportItems =
                 weeklyReportRepository
-                        .findAllByUserAndWeekStartDateBetweenOrderByWeekStartDateAsc(
+                        .findAllByUserAndWeekStartDateBetweenAndReportStatusOrderByWeekStartDateAsc(
                                 user,
                                 startDate,
-                                endDate
+                                endDate,
+                                "completed"
                         )
                         .stream()
                         .map(report -> toWeeklyReportItem(yearMonth, report))

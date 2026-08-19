@@ -38,6 +38,9 @@ public class WeeklyReport extends BaseTimeEntity {
     @Column(name = "week_end_date", nullable = false)
     private LocalDate weekEndDate;
 
+    @Column(name = "report_status", nullable = false, length = 20)
+    private String reportStatus;
+
     @Lob
     @Column(name = "weekly_summary", nullable = false, columnDefinition = "TEXT")
     private String weeklySummary;
@@ -59,21 +62,42 @@ public class WeeklyReport extends BaseTimeEntity {
     private WeeklyReport(
             User user,
             LocalDate weekStartDate,
-            LocalDate weekEndDate,
-            String weeklySummary,
-            String personalizedSolution
+            LocalDate weekEndDate
     ) {
         this.user = user;
         this.weekStartDate = weekStartDate;
         this.weekEndDate = weekEndDate;
-        this.weeklySummary = weeklySummary;
-        this.personalizedSolution = personalizedSolution;
+        this.reportStatus = "collecting";
+        this.weeklySummary = "";
+        this.personalizedSolution = "";
         this.generatedAt = LocalDateTime.now();
     }
 
-    public void regenerate(String weeklySummary, String personalizedSolution) {
+    public void markGenerating() {
+        this.reportStatus = "generating";
+    }
+
+    public void markCollecting() {
+        this.reportStatus = "collecting";
+    }
+
+    public void complete(
+            String weeklySummary,
+            String personalizedSolution
+    ) {
         this.weeklySummary = weeklySummary;
         this.personalizedSolution = personalizedSolution;
+        this.reportStatus = "completed";
+        this.generatedAt = LocalDateTime.now();
+    }
+
+    public void regenerate(
+            String weeklySummary,
+            String personalizedSolution
+    ) {
+        this.weeklySummary = weeklySummary;
+        this.personalizedSolution = personalizedSolution;
+        this.reportStatus = "completed";
         this.regeneratedAt = LocalDateTime.now();
     }
 

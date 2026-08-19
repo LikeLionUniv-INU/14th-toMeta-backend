@@ -4,9 +4,11 @@ import com.likelion.tometa.domain.report.dto.request.DailyReportNoteUpdateReques
 import com.likelion.tometa.domain.report.dto.response.DailyReportGenerationResponseDto;
 import com.likelion.tometa.domain.report.dto.response.DailyReportResponseDto;
 import com.likelion.tometa.domain.report.dto.response.MonthlyReportListResponseDto;
+import com.likelion.tometa.domain.report.dto.response.WeeklyReportGenerationResponseDto;
 import com.likelion.tometa.domain.report.service.DailyReportGenerationService;
 import com.likelion.tometa.domain.report.service.DailyReportService;
 import com.likelion.tometa.domain.report.service.MonthlyReportService;
+import com.likelion.tometa.domain.report.service.WeeklyReportGenerationService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
 import com.likelion.tometa.global.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -33,6 +35,7 @@ public class ReportController {
     private final DailyReportService dailyReportService;
     private final DailyReportGenerationService dailyReportGenerationService;
     private final MonthlyReportService monthlyReportService;
+    private final WeeklyReportGenerationService weeklyReportGenerationService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<MonthlyReportListResponseDto>>
@@ -99,5 +102,18 @@ public class ReportController {
         dailyReportService.updateNote(date, request, sessionToken);
 
         return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    @PostMapping("/weekly/{startDate}/generate")
+    public ResponseEntity<ApiResponse<WeeklyReportGenerationResponseDto>> generateWeeklyReport(
+            @PathVariable
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @CookieValue(
+                    name = AnonymousSessionCookieProvider.COOKIE_NAME,
+                    required = false
+            )
+            String sessionToken
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(weeklyReportGenerationService.generate(startDate, sessionToken)));
     }
 }

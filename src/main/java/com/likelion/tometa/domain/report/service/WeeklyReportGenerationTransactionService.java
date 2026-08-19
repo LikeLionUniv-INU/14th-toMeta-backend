@@ -1,0 +1,343 @@
+package com.likelion.tometa.domain.report.service;
+
+import com.likelion.tometa.domain.health.entity.DailyHealthSummary;
+import com.likelion.tometa.domain.health.repository.DailyHealthSummaryRepository;
+import com.likelion.tometa.domain.report.code.ReportErrorCode;
+import com.likelion.tometa.domain.report.dto.response.WeeklyReportGenerationResponseDto;
+import com.likelion.tometa.domain.report.entity.DailyReport;
+import com.likelion.tometa.domain.report.entity.WeeklyReport;
+import com.likelion.tometa.domain.report.entity.WeeklyReportAnalysis;
+import com.likelion.tometa.domain.report.repository.DailyReportRepository;
+import com.likelion.tometa.domain.report.repository.WeeklyReportAnalysisRepository;
+import com.likelion.tometa.domain.report.repository.WeeklyReportRepository;
+import com.likelion.tometa.domain.report.support.WeeklyReportAiResult;
+import com.likelion.tometa.domain.report.support.WeeklyReportGenerationContext;
+import com.likelion.tometa.domain.user.entity.User;
+import com.likelion.tometa.domain.user.repository.UserRepository;
+import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
+import com.likelion.tometa.global.code.GlobalErrorCode;
+import com.likelion.tometa.global.exception.GeneralException;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+@Service
+@RequiredArgsConstructor
+public class WeeklyReportGenerationTransactionService {
+
+    private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
+    private static final String COMPLETED = "completed";
+    private static final String GENERATING = "generating";
+    private static final String FEMALE = "female";
+    private static final String MALE = "male";
+
+    private final AnonymousSessionUserResolver sessionUserResolver;
+    private final UserRepository userRepository;
+    private final DailyReportRepository dailyReportRepository;
+    private final DailyHealthSummaryRepository dailyHealthSummaryRepository;
+    private final WeeklyReportRepository weeklyReportRepository;
+    private final WeeklyReportAnalysisRepository weeklyReportAnalysisRepository;
+
+    @Transactional
+    public Preparation prepare(
+            LocalDate startDate,
+            String sessionToken
+    ) {
+        validateStartDate(startDate);
+
+        User resolvedUser = sessionUserResolver.resolve(sessionToken);
+
+        User user = userRepository.findWithLockById(resolvedUser.getId())
+                .orElseThrow(() -> new GeneralException(
+                        GlobalErrorCode.INTERNAL_SERVER_ERROR
+                ));
+
+        LocalDate endDate = startDate.plusDays(6);
+
+        WeeklyReport weeklyReport = weeklyReportRepository
+                .findByUserAndWeekStartDateForUpdate(user, startDate)
+                .orElseGet(() -> weeklyReportRepository.saveAndFlush(
+                        WeeklyReport.builder()
+                                .user(user)
+                                .weekStartDate(startDate)
+                                .weekEndDate(endDate)
+                                .build()
+                ));
+
+        if (COMPLETED.equals(weeklyReport.getReportStatus())) {
+            return Preparation.completed(
+                    toResponse(
+                            weeklyReport,
+                            getAnalysisContents(weeklyReport)
+                    )
+            );
+        }
+
+        if (GENERATING.equals(weeklyReport.getReportStatus())) {
+            throw new GeneralException(
+                    ReportErrorCode.WEEKLY_REPORT_GENERATION_IN_PROGRESS
+            );
+        }
+
+        List<DailyReport> dailyReports =
+                dailyReportRepository
+                        .findAllByDailyRecord_UserAndDailyRecord_RecordDateBetweenAndReportStatusOrderByDailyRecord_RecordDateAsc(
+                                user,
+                                startDate,
+                                endDate,
+                                COMPLETED
+                        );
+
+        if (dailyReports.isEmpty()) {
+            throw new GeneralException(
+                    ReportErrorCode.WEEKLY_REPORT_SOURCE_NOT_FOUND
+            );
+        }
+
+        List<DailyHealthSummary> healthSummaries =
+                dailyHealthSummaryRepository
+                        .findAllByUser_IdAndSummaryDateBetweenOrderBySummaryDateAsc(
+                                user.getId(),
+                                startDate,
+                                endDate
+                        );
+
+        weeklyReport.markGenerating();
+
+        return Preparation.pending(
+                weeklyReport.getId(),
+                createContext(
+                        user,
+                        startDate,
+                        endDate,
+                        dailyReports,
+                        healthSummaries
+                )
+        );
+    }
+
+    @Transactional
+    public WeeklyReportGenerationResponseDto complete(
+            Long reportId,
+            WeeklyReportAiResult aiResult
+    ) {
+        WeeklyReport weeklyReport = weeklyReportRepository
+                .findByIdForUpdate(reportId)
+                .orElseThrow(() -> new GeneralException(
+                        GlobalErrorCode.INTERNAL_SERVER_ERROR
+                ));
+
+        weeklyReport.complete(
+                aiResult.weeklySummary(),
+                aiResult.personalizedSolution()
+        );
+
+        List<WeeklyReportAnalysis> analyses =
+                IntStream.range(0, aiResult.analyses().size())
+                        .mapToObj(index ->
+                                WeeklyReportAnalysis.builder()
+                                        .weeklyReport(weeklyReport)
+                                        .content(aiResult.analyses().get(index))
+                                        .sortOrder(index + 1)
+                                        .build()
+                        )
+                        .toList();
+
+        weeklyReportAnalysisRepository.saveAll(analyses);
+
+        return toResponse(
+                weeklyReport,
+                aiResult.analyses()
+        );
+    }
+
+    @Transactional
+    public void reset(Long reportId) {
+        weeklyReportRepository.findByIdForUpdate(reportId)
+                .filter(report ->
+                        GENERATING.equals(report.getReportStatus()))
+                .ifPresent(WeeklyReport::markCollecting);
+    }
+
+    private WeeklyReportGenerationContext createContext(
+            User user,
+            LocalDate startDate,
+            LocalDate endDate,
+            List<DailyReport> dailyReports,
+            List<DailyHealthSummary> healthSummaries
+    ) {
+        Map<LocalDate, DailyReport> reportByDate =
+                dailyReports.stream()
+                        .collect(Collectors.toMap(
+                                report ->
+                                        report.getDailyRecord().getRecordDate(),
+                                Function.identity()
+                        ));
+
+        Map<LocalDate, DailyHealthSummary> healthByDate =
+                healthSummaries.stream()
+                        .collect(Collectors.toMap(
+                                DailyHealthSummary::getSummaryDate,
+                                Function.identity()
+                        ));
+
+        List<WeeklyReportGenerationContext.Day> days =
+                IntStream.rangeClosed(0, 6)
+                        .mapToObj(index -> {
+                            LocalDate date =
+                                    startDate.plusDays(index);
+
+                            return toDay(
+                                    user,
+                                    date,
+                                    reportByDate.get(date),
+                                    healthByDate.get(date)
+                            );
+                        })
+                        .toList();
+
+        return new WeeklyReportGenerationContext(
+                startDate,
+                endDate,
+                user.getGender(),
+                days
+        );
+    }
+
+    private WeeklyReportGenerationContext.Day toDay(
+            User user,
+            LocalDate date,
+            DailyReport report,
+            DailyHealthSummary healthSummary
+    ) {
+        if (report == null) {
+            return new WeeklyReportGenerationContext.Day(
+                    date,
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    toHealthSummary(user, healthSummary)
+            );
+        }
+
+        return new WeeklyReportGenerationContext.Day(
+                date,
+                true,
+                report.getDailyRecord().getSkinStatus(),
+                report.getDailyRecord().getFoodMemo(),
+                report.getDailyRecord().getMemo(),
+                report.getAiSummary(),
+                report.getAiAnalysis(),
+                toHealthSummary(user, healthSummary)
+        );
+    }
+
+    private WeeklyReportGenerationContext.HealthSummary toHealthSummary(
+            User user,
+            DailyHealthSummary summary
+    ) {
+        if (summary == null) {
+            return null;
+        }
+
+        Integer menstrualCycleDay =
+                FEMALE.equals(user.getGender())
+                        ? summary.getMenstrualCycleDay()
+                        : null;
+
+        BigDecimal avgSpo2 =
+                MALE.equals(user.getGender())
+                        ? summary.getAvgSpo2()
+                        : null;
+
+        return new WeeklyReportGenerationContext.HealthSummary(
+                summary.getSleepMinutes(),
+                summary.getSkinTemperatureCelsius(),
+                summary.getExerciseMinutes(),
+                summary.getTotalCaloriesBurned(),
+                menstrualCycleDay,
+                avgSpo2
+        );
+    }
+
+    private List<String> getAnalysisContents(
+            WeeklyReport weeklyReport
+    ) {
+        return weeklyReportAnalysisRepository
+                .findAllByWeeklyReportOrderBySortOrderAsc(weeklyReport)
+                .stream()
+                .map(WeeklyReportAnalysis::getContent)
+                .toList();
+    }
+
+    private WeeklyReportGenerationResponseDto toResponse(
+            WeeklyReport weeklyReport,
+            List<String> analyses
+    ) {
+        return new WeeklyReportGenerationResponseDto(
+                weeklyReport.getId(),
+                weeklyReport.getWeekStartDate(),
+                weeklyReport.getWeekEndDate(),
+                weeklyReport.getReportStatus(),
+                weeklyReport.getWeeklySummary(),
+                analyses,
+                weeklyReport.getPersonalizedSolution()
+        );
+    }
+
+    private void validateStartDate(LocalDate startDate) {
+        if (startDate == null
+                || startDate.getDayOfWeek() != DayOfWeek.MONDAY
+                || startDate.plusDays(6)
+                .isAfter(LocalDate.now(KOREA_ZONE))) {
+            throw new GeneralException(
+                    GlobalErrorCode.BAD_REQUEST
+            );
+        }
+    }
+
+    public record Preparation(
+            Long reportId,
+            WeeklyReportGenerationContext context,
+            WeeklyReportGenerationResponseDto completedResponse
+    ) {
+
+        public static Preparation pending(
+                Long reportId,
+                WeeklyReportGenerationContext context
+        ) {
+            return new Preparation(
+                    reportId,
+                    context,
+                    null
+            );
+        }
+
+        public static Preparation completed(
+                WeeklyReportGenerationResponseDto response
+        ) {
+            return new Preparation(
+                    response.weeklyReportId(),
+                    null,
+                    response
+            );
+        }
+
+        public boolean requiresGeneration() {
+            return context != null;
+        }
+    }
+}
