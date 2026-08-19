@@ -1,18 +1,22 @@
 package com.likelion.tometa.domain.report.controller;
 
+import com.likelion.tometa.domain.report.dto.request.DailyReportNoteUpdateRequestDto;
 import com.likelion.tometa.domain.report.dto.response.DailyReportGenerationResponseDto;
 import com.likelion.tometa.domain.report.dto.response.DailyReportResponseDto;
 import com.likelion.tometa.domain.report.service.DailyReportGenerationService;
 import com.likelion.tometa.domain.report.service.DailyReportService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
 import com.likelion.tometa.global.response.ApiResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -55,5 +59,21 @@ public class ReportController {
         return ResponseEntity.ok(ApiResponse.success(
                 dailyReportGenerationService.generate(date, sessionToken))
         );
+    }
+
+    @PatchMapping("/daily/{date}/note")
+    public ResponseEntity<ApiResponse<Void>> updateDailyReportNote(
+            @PathVariable
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @Valid @RequestBody DailyReportNoteUpdateRequestDto request,
+            @CookieValue(
+                    name = AnonymousSessionCookieProvider.COOKIE_NAME,
+                    required = false
+            )
+            String sessionToken
+    ) {
+        dailyReportService.updateNote(date, request, sessionToken);
+
+        return ResponseEntity.ok(ApiResponse.success());
     }
 }
