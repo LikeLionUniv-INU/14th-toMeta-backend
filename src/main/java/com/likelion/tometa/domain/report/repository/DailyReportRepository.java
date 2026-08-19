@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 public interface DailyReportRepository extends JpaRepository<DailyReport, Long> {
@@ -24,6 +25,13 @@ public interface DailyReportRepository extends JpaRepository<DailyReport, Long> 
     Optional<DailyReport> findByDailyRecord_UserAndDailyRecord_RecordDateAndReportStatus(
             User user,
             LocalDate recordDate,
+            String reportStatus
+    );
+
+    List<DailyReport> findAllByDailyRecord_UserAndDailyRecord_RecordDateBetweenAndReportStatusOrderByDailyRecord_RecordDateAsc(
+            User user,
+            LocalDate startDate,
+            LocalDate endDate,
             String reportStatus
     );
 
