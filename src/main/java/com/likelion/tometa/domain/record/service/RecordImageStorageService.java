@@ -5,7 +5,7 @@ import com.likelion.tometa.domain.record.dto.request.RecordImageUploadUrlRequest
 import com.likelion.tometa.domain.record.dto.response.RecordImageUploadUrlResponseDto;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
-import com.likelion.tometa.global.config.S3StorageProperties;
+import com.likelion.tometa.global.config.s3.S3StorageProperties;
 import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
