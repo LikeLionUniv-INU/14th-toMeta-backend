@@ -1,4 +1,4 @@
-package com.likelion.tometa.global.config;
+package com.likelion.tometa.global.config.s3;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
