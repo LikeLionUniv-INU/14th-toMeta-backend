@@ -5,7 +5,7 @@ import com.likelion.tometa.domain.record.dto.request.RecordImageUploadUrlRequest
 import com.likelion.tometa.domain.record.dto.response.RecordImageUploadUrlResponseDto;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
-import com.likelion.tometa.global.config.S3StorageProperties;
+import com.likelion.tometa.global.config.s3.S3StorageProperties;
 import com.likelion.tometa.global.exception.GeneralException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -38,6 +39,8 @@ class RecordImageStorageServiceTest {
     private S3Presigner s3Presigner;
     @Mock
     private PresignedPutObjectRequest presignedRequest;
+    @Mock
+    private RecordImageOwnershipService recordImageOwnershipService;
 
     private RecordImageStorageService service;
     private User user;
@@ -53,7 +56,8 @@ class RecordImageStorageServiceTest {
         service = new RecordImageStorageService(
                 sessionUserResolver,
                 s3Presigner,
-                properties
+                properties,
+                recordImageOwnershipService
         );
         user = User.builder().build();
         ReflectionTestUtils.setField(user, "id", 1L);
@@ -82,6 +86,12 @@ class RecordImageStorageServiceTest {
                 .toList());
         result.uploads().forEach(upload ->
                 assertTrue(upload.objectKey().startsWith("skin-images/1/")));
+        verify(recordImageOwnershipService).registerPending(
+                eq(1L),
+                eq(result.uploads().stream()
+                        .map(RecordImageUploadUrlResponseDto.UploadInfo::objectKey)
+                        .toList())
+        );
     }
 
     @Test

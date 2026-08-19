@@ -2,6 +2,11 @@ spring:
   application:
     name: tometa
 
+  task:
+    scheduling:
+      pool:
+        size: 2
+
   datasource:
     url: jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
     username: ${SPRING_DATASOURCE_USERNAME}
@@ -33,6 +38,11 @@ app:
       region: ${AWS_REGION:ap-northeast-2}
       presigned-upload-expiration-minutes: 10
       max-upload-size-bytes: 10485760
+      orphan-cleanup:
+        retention: 24h
+        batch-size: 500
+        cron: "0 0 * * * *"
+        zone: Asia/Seoul
 
   ai:
     openai:

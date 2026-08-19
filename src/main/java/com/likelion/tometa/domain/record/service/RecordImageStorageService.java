@@ -42,6 +42,7 @@ public class RecordImageStorageService {
     private final AnonymousSessionUserResolver sessionUserResolver;
     private final S3Presigner s3Presigner;
     private final S3StorageProperties properties;
+    private final RecordImageOwnershipService recordImageOwnershipService;
 
     public RecordImageUploadUrlResponseDto issueUploadUrl(
             RecordImageUploadUrlRequestDto request,
@@ -61,6 +62,12 @@ public class RecordImageStorageService {
         List<RecordImageUploadUrlResponseDto.UploadInfo> uploads = request.images().stream()
                 .map(image -> createPresignedUploadUrl(user, image, expiration, expiresAt))
                 .toList();
+        recordImageOwnershipService.registerPending(
+                user.getId(),
+                uploads.stream()
+                        .map(RecordImageUploadUrlResponseDto.UploadInfo::objectKey)
+                        .toList()
+        );
 
         return new RecordImageUploadUrlResponseDto(uploads);
     }
