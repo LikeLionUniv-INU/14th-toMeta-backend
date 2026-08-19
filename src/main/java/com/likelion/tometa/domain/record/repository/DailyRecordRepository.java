@@ -21,10 +21,10 @@ public interface DailyRecordRepository extends JpaRepository<DailyRecord, Long> 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "3000"))
     @Query("""
-            select record
-            from DailyRecord record
-            where record.user = :user
-              and record.recordDate = :recordDate
+            select dailyRecord
+            from DailyRecord dailyRecord
+            where dailyRecord.user = :user
+              and dailyRecord.recordDate = :recordDate
             """)
     Optional<DailyRecord> findByUserAndRecordDateForUpdate(
             @Param("user") User user,
@@ -33,5 +33,9 @@ public interface DailyRecordRepository extends JpaRepository<DailyRecord, Long> 
 
     boolean existsByUserAndRecordDate(User user, LocalDate recordDate);
 
-    List<DailyRecord> findAllByUserAndRecordDateBetween(User user, LocalDate startDate, LocalDate endDate);
+    List<DailyRecord> findAllByUserAndRecordDateBetween(
+            User user,
+            LocalDate startDate,
+            LocalDate endDate
+    );
 }

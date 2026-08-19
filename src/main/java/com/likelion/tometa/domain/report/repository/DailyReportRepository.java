@@ -4,12 +4,15 @@ import com.likelion.tometa.domain.health.entity.DailyHealthSummary;
 import com.likelion.tometa.domain.record.entity.DailyRecord;
 import com.likelion.tometa.domain.report.entity.DailyReport;
 import com.likelion.tometa.domain.user.entity.User;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -17,7 +20,22 @@ public interface DailyReportRepository extends JpaRepository<DailyReport, Long> 
 
     Optional<DailyReport> findByDailyRecord(DailyRecord dailyRecord);
 
-    Optional<DailyReport> findFirstByDailyRecord_UserAndReportStatusOrderByDailyRecord_RecordDateDesc(User user, String reportStatus);
+    Optional<DailyReport> findFirstByDailyRecord_UserAndReportStatusOrderByDailyRecord_RecordDateDesc(
+            User user,
+            String reportStatus
+    );
+
+    Optional<DailyReport> findByDailyRecord_UserAndDailyRecord_RecordDateAndReportStatus(
+            User user,
+            LocalDate recordDate,
+            String reportStatus
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select report from DailyReport report where report.dailyRecord = :dailyRecord")
+    Optional<DailyReport> findByDailyRecordForUpdate(
+            @Param("dailyRecord") DailyRecord dailyRecord
+    );
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional
@@ -62,5 +80,19 @@ public interface DailyReportRepository extends JpaRepository<DailyReport, Long> 
             @Param("aiAnalysis") String aiAnalysis,
             @Param("personalizedSolution") String personalizedSolution,
             @Param("completedAt") LocalDateTime completedAt
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            update DailyReport report
+               set report.reportStatus = 'collecting'
+             where report.id = :reportId
+               and report.generationVersion = :generationVersion
+               and report.reportStatus = 'generating'
+            """)
+    int resetGenerationIfCurrent(
+            @Param("reportId") Long reportId,
+            @Param("generationVersion") long generationVersion
     );
 }

@@ -74,6 +74,18 @@ class DailyReportRepositoryIntegrationTest {
                 report.getId(),
                 1L
         ));
+        assertEquals(0, dailyReportRepository.resetGenerationIfCurrent(
+                report.getId(),
+                0L
+        ));
+        assertEquals(1, dailyReportRepository.resetGenerationIfCurrent(
+                report.getId(),
+                1L
+        ));
+        assertEquals(1, dailyReportRepository.markGeneratingIfCurrent(
+                report.getId(),
+                1L
+        ));
 
         latest = dailyReportRepository.findById(report.getId()).orElseThrow();
         latest.invalidateForRegeneration();

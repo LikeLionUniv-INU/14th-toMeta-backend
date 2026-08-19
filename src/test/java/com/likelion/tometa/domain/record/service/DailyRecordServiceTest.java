@@ -560,7 +560,8 @@ class DailyRecordServiceTest {
         when(dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
                 .thenReturn(List.of());
-        when(dailyRecordCosmeticRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+        when(dailyRecordCosmeticRepository
+                .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(record))
                 .thenReturn(List.of(cosmeticSnapshot));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of());
@@ -613,7 +614,8 @@ class DailyRecordServiceTest {
         when(dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
                 .thenReturn(List.of());
-        when(dailyRecordCosmeticRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+        when(dailyRecordCosmeticRepository
+                .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(record))
                 .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of());
@@ -645,7 +647,8 @@ class DailyRecordServiceTest {
                         List.of(),
                         1
                 )));
-        when(dailyRecordCosmeticRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+        when(dailyRecordCosmeticRepository
+                .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(record))
                 .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
 
         DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
@@ -691,7 +694,7 @@ class DailyRecordServiceTest {
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
                 .thenReturn(List.of());
         when(dailyRecordCosmeticRepository
-                .findAllByDailyRecordOrderBySortOrderAsc(record))
+                .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(record))
                 .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of(existingImage));
@@ -744,7 +747,7 @@ class DailyRecordServiceTest {
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
                 .thenReturn(List.of());
         when(dailyRecordCosmeticRepository
-                .findAllByDailyRecordOrderBySortOrderAsc(record))
+                .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(record))
                 .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of(existingImage));
@@ -792,7 +795,8 @@ class DailyRecordServiceTest {
         when(dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
                 .thenReturn(List.of());
-        when(dailyRecordCosmeticRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+        when(dailyRecordCosmeticRepository
+                .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(record))
                 .thenReturn(List.of(oldSnapshot));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of());
@@ -887,7 +891,8 @@ class DailyRecordServiceTest {
         when(dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
                 .thenReturn(List.of(setItemSnapshot));
-        when(dailyRecordCosmeticRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+        when(dailyRecordCosmeticRepository
+                .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(record))
                 .thenReturn(List.of(memberSnapshot, directSnapshot));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of());

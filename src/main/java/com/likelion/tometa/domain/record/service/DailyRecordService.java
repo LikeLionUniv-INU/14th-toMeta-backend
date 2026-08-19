@@ -241,7 +241,7 @@ public class DailyRecordService {
         List<DailyRecordCosmeticSetItem> setItems = dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(dailyRecord);
         List<DailyRecordCosmetic> cosmetics = dailyRecordCosmeticRepository
-                .findAllByDailyRecordOrderBySortOrderAsc(dailyRecord);
+                .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(dailyRecord);
         List<DailyRecordImage> images = dailyRecordImageRepository
                 .findAllByDailyRecordOrderBySortOrderAsc(dailyRecord);
         return new ExistingRecordState(
