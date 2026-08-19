@@ -9,7 +9,6 @@ import com.likelion.tometa.global.config.s3.S3StorageProperties;
 import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -45,7 +44,6 @@ public class RecordImageStorageService {
     private final S3StorageProperties properties;
     private final RecordImageOwnershipService recordImageOwnershipService;
 
-    @Transactional
     public RecordImageUploadUrlResponseDto issueUploadUrl(
             RecordImageUploadUrlRequestDto request,
             String sessionToken

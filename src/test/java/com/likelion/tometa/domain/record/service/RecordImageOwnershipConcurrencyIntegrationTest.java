@@ -28,10 +28,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mockingDetails;
@@ -78,6 +79,7 @@ class RecordImageOwnershipConcurrencyIntegrationTest {
         CountDownLatch cleanupLockQueryEntered = new CountDownLatch(1);
         AtomicInteger lockInvocationCount = new AtomicInteger();
 
+        // Spring Data 인터페이스 프록시는 호출할 실제 메서드가 없으므로 기본 응답으로 위임한다.
         Answer<?> repositoryDelegate = mockingDetails(recordImageObjectRepository)
                 .getMockCreationSettings()
                 .getDefaultAnswer();
@@ -104,7 +106,10 @@ class RecordImageOwnershipConcurrencyIntegrationTest {
                     recordImageOwnershipService.claimForCleanup(OBJECT_KEY)
             );
             assertTrue(cleanupLockQueryEntered.await(2, TimeUnit.SECONDS));
-            assertFalse(cleanup.isDone());
+            assertThrows(
+                    TimeoutException.class,
+                    () -> cleanup.get(200, TimeUnit.MILLISECONDS)
+            );
 
             releaseAttachment.countDown();
             attachment.get(3, TimeUnit.SECONDS);

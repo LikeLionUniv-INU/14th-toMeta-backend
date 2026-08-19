@@ -8,6 +8,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
@@ -129,6 +130,20 @@ class RecordImageOrphanCleanupServiceTest {
 
         verify(recordImageOwnershipService, never()).claimForCleanup(any());
         verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+    }
+
+    @Test
+    void cleanupOrphanImages_treatsConcurrentOwnershipInsertAsProtected() {
+        S3Object candidate = object("skin-images/1/concurrent.jpg", NOW.minus(Duration.ofDays(2)));
+        when(s3Client.listObjectsV2(any(ListObjectsV2Request.class)))
+                .thenReturn(page(false, null, candidate));
+        when(recordImageOwnershipService.claimForCleanup(candidate.key()))
+                .thenThrow(new DataIntegrityViolationException("concurrent ownership insert"));
+
+        service.cleanupOrphanImages();
+
+        verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
+        verify(recordImageOwnershipService, never()).markDeleted(any(), any());
     }
 
     @Test

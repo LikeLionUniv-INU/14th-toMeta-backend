@@ -4,6 +4,7 @@ import com.likelion.tometa.global.config.s3.S3OrphanCleanupProperties;
 import com.likelion.tometa.global.config.s3.S3StorageProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.exception.SdkException;
@@ -73,9 +74,15 @@ public class RecordImageOrphanCleanupService {
                 Optional<String> claimToken;
                 try {
                     claimToken = recordImageOwnershipService.claimForCleanup(candidate.key());
+                } catch (DataIntegrityViolationException e) {
+                    protectedCount++;
+                    continue;
                 } catch (RuntimeException e) {
                     failed++;
-                    log.warn("Failed to claim orphan image: " + candidate.key(), e);
+                    log.atWarn()
+                            .setCause(e)
+                            .addArgument(candidate.key())
+                            .log("Failed to claim orphan image: {}");
                     continue;
                 }
                 if (claimToken.isEmpty()) {
@@ -90,10 +97,16 @@ public class RecordImageOrphanCleanupService {
                 } catch (SdkException e) {
                     failed++;
                     releaseClaim(candidate.key(), claimToken.get());
-                    log.warn("Failed to delete orphan image: " + candidate.key(), e);
+                    log.atWarn()
+                            .setCause(e)
+                            .addArgument(candidate.key())
+                            .log("Failed to delete orphan image: {}");
                 } catch (RuntimeException e) {
                     failed++;
-                    log.warn("Failed to finalize orphan image deletion: " + candidate.key(), e);
+                    log.atError()
+                            .setCause(e)
+                            .addArgument(candidate.key())
+                            .log("Failed to finalize orphan image deletion: {}");
                 }
             }
 
@@ -135,7 +148,10 @@ public class RecordImageOrphanCleanupService {
         try {
             recordImageOwnershipService.releaseCleanupClaim(objectKey, claimToken);
         } catch (RuntimeException e) {
-            log.error("Failed to release orphan image cleanup claim: " + objectKey, e);
+            log.atError()
+                    .setCause(e)
+                    .addArgument(objectKey)
+                    .log("Failed to release orphan image cleanup claim: {}");
         }
     }
 
