@@ -1,6 +1,8 @@
 package com.likelion.tometa.domain.report.controller;
 
+import com.likelion.tometa.domain.report.dto.response.DailyReportGenerationResponseDto;
 import com.likelion.tometa.domain.report.dto.response.DailyReportResponseDto;
+import com.likelion.tometa.domain.report.service.DailyReportGenerationService;
 import com.likelion.tometa.domain.report.service.DailyReportService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
 import com.likelion.tometa.global.response.ApiResponse;
@@ -10,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -21,6 +24,7 @@ import java.time.LocalDate;
 public class ReportController {
 
     private final DailyReportService dailyReportService;
+    private final DailyReportGenerationService dailyReportGenerationService;
 
     @GetMapping("/daily/{date}")
     public ResponseEntity<ApiResponse<DailyReportResponseDto>> getDailyReport(
@@ -34,6 +38,22 @@ public class ReportController {
     ) {
         return ResponseEntity.ok(ApiResponse.success(
                 dailyReportService.getDailyReport(date, sessionToken))
+        );
+    }
+
+    @PostMapping("/daily/{date}/generate")
+    public ResponseEntity<ApiResponse<DailyReportGenerationResponseDto>>
+    generateDailyReport(
+            @PathVariable
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @CookieValue(
+                    name = AnonymousSessionCookieProvider.COOKIE_NAME,
+                    required = false
+            )
+            String sessionToken
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                dailyReportGenerationService.generate(date, sessionToken))
         );
     }
 }
