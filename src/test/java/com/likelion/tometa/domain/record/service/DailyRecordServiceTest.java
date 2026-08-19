@@ -8,16 +8,23 @@ import com.likelion.tometa.domain.cosmetic.enums.CosmeticSetUsageTime;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticIngredientRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
+import com.likelion.tometa.domain.cosmetic.repository.CosmeticTagRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
 import com.likelion.tometa.domain.record.code.RecordErrorCode;
 import com.likelion.tometa.domain.record.dto.request.DailyRecordCreateRequestDto;
 import com.likelion.tometa.domain.record.dto.response.DailyRecordCreateResponseDto;
+import com.likelion.tometa.domain.record.dto.response.DailyRecordDetailResponseDto;
 import com.likelion.tometa.domain.record.entity.DailyRecord;
 import com.likelion.tometa.domain.record.entity.DailyRecordCosmetic;
 import com.likelion.tometa.domain.record.entity.DailyRecordCosmeticSet;
+import com.likelion.tometa.domain.record.entity.DailyRecordImage;
+import com.likelion.tometa.domain.record.entity.DailyRecordSelection;
+import com.likelion.tometa.domain.record.enums.DailyRecordSelectionType;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticSetRepository;
+import com.likelion.tometa.domain.record.repository.DailyRecordImageRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordRepository;
+import com.likelion.tometa.domain.record.repository.DailyRecordSelectionRepository;
 import com.likelion.tometa.domain.report.entity.DailyReport;
 import com.likelion.tometa.domain.report.repository.DailyReportRepository;
 import com.likelion.tometa.domain.user.entity.User;
@@ -39,12 +46,14 @@ import tools.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -66,6 +75,10 @@ class DailyRecordServiceTest {
     @Mock
     private DailyRecordCosmeticSetRepository dailyRecordCosmeticSetRepository;
     @Mock
+    private DailyRecordSelectionRepository dailyRecordSelectionRepository;
+    @Mock
+    private DailyRecordImageRepository dailyRecordImageRepository;
+    @Mock
     private DailyReportRepository dailyReportRepository;
     @Mock
     private UserCosmeticRepository userCosmeticRepository;
@@ -76,7 +89,11 @@ class DailyRecordServiceTest {
     @Mock
     private CosmeticIngredientRepository cosmeticIngredientRepository;
     @Mock
+    private CosmeticTagRepository cosmeticTagRepository;
+    @Mock
     private DailyRecordImageAttachmentService imageAttachmentService;
+    @Mock
+    private RecordImageReadUrlService imageReadUrlService;
     @Mock
     private ObjectMapper objectMapper;
 
@@ -163,6 +180,31 @@ class DailyRecordServiceTest {
         assertEquals(List.of(1, 2, 3, 4), savedCosmetics.stream()
                 .map(DailyRecordCosmetic::getSortOrder)
                 .toList());
+
+        ArgumentCaptor<Iterable<DailyRecordSelection>> selectionCaptor = iterableCaptor();
+        verify(dailyRecordSelectionRepository).saveAll(selectionCaptor.capture());
+        List<DailyRecordSelection> savedSelections = toList(selectionCaptor.getValue());
+        assertEquals(
+                List.of(
+                        DailyRecordSelectionType.SET,
+                        DailyRecordSelectionType.SET,
+                        DailyRecordSelectionType.COSMETIC,
+                        DailyRecordSelectionType.COSMETIC
+                ),
+                savedSelections.stream()
+                        .map(DailyRecordSelection::getSelectionType)
+                        .toList()
+        );
+        assertEquals(List.of(3L, 8L, 12L, 15L), savedSelections.stream()
+                .map(DailyRecordSelection::getSourceId)
+                .toList());
+        assertEquals(List.of(1, 2, 1, 2), savedSelections.stream()
+                .map(DailyRecordSelection::getSortOrder)
+                .toList());
+        assertEquals(List.of("set-3", "set-8", "product-12", "product-15"),
+                savedSelections.stream()
+                        .map(DailyRecordSelection::getNameSnapshot)
+                        .toList());
 
         ArgumentCaptor<DailyReport> reportCaptor = ArgumentCaptor.forClass(DailyReport.class);
         verify(dailyReportRepository).save(reportCaptor.capture());
@@ -375,6 +417,94 @@ class DailyRecordServiceTest {
         assertSame(GlobalErrorCode.BAD_REQUEST, exception.getErrorCode());
     }
 
+    @Test
+    void getByDate_returnsSnapshotsInSetThenCosmeticOrderAndSignsImages() throws Exception {
+        LocalDate date = LocalDate.of(2026, 8, 12);
+        DailyRecord dailyRecord = DailyRecord.builder()
+                .user(user)
+                .recordDate(date)
+                .skinStatus("bad")
+                .foodMemo("food")
+                .memo("memo")
+                .build();
+        ReflectionTestUtils.setField(dailyRecord, "id", 37L);
+
+        DailyRecordSelection secondSet = selection(
+                dailyRecord,
+                DailyRecordSelectionType.SET,
+                8L,
+                "set-8",
+                List.of("panthenol"),
+                2
+        );
+        DailyRecordSelection cosmetic = selection(
+                dailyRecord,
+                DailyRecordSelectionType.COSMETIC,
+                11L,
+                "product-11",
+                List.of("ceramide"),
+                1
+        );
+        DailyRecordSelection firstSet = selection(
+                dailyRecord,
+                DailyRecordSelectionType.SET,
+                3L,
+                "set-3",
+                List.of("heartleaf"),
+                1
+        );
+        DailyRecordImage image = DailyRecordImage.builder()
+                .dailyRecord(dailyRecord)
+                .objectKey("skin-images/1/image.jpg")
+                .mimeType("image/jpeg")
+                .fileSize(100L)
+                .sortOrder(1)
+                .build();
+
+        when(dailyRecordRepository.findByUserAndRecordDate(user, date))
+                .thenReturn(Optional.of(dailyRecord));
+        when(dailyRecordSelectionRepository.findAllByDailyRecord(dailyRecord))
+                .thenReturn(List.of(secondSet, cosmetic, firstSet));
+        when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(dailyRecord))
+                .thenReturn(List.of(image));
+        when(imageReadUrlService.issueReadUrl("skin-images/1/image.jpg"))
+                .thenReturn("https://signed.example/image.jpg");
+
+        DailyRecordDetailResponseDto result = dailyRecordService.getByDate(
+                date,
+                SESSION_TOKEN
+        );
+
+        assertEquals(37L, result.recordId());
+        assertEquals(List.of("SET", "SET", "COSMETIC"), result.morningSelections()
+                .stream()
+                .map(selection -> selection instanceof DailyRecordDetailResponseDto.SetSelection
+                        ? ((DailyRecordDetailResponseDto.SetSelection) selection).selectionType()
+                        : ((DailyRecordDetailResponseDto.CosmeticSelection) selection).selectionType())
+                .toList());
+        assertEquals(3L, ((DailyRecordDetailResponseDto.SetSelection)
+                result.morningSelections().getFirst()).cosmeticSetId());
+        assertEquals(11L, ((DailyRecordDetailResponseDto.CosmeticSelection)
+                result.morningSelections().get(2)).userCosmeticId());
+        assertTrue(result.nightSelections().isEmpty());
+        assertEquals("skin-images/1/image.jpg", result.images().getFirst().imageKey());
+        assertEquals("https://signed.example/image.jpg", result.images().getFirst().imageUrl());
+    }
+
+    @Test
+    void getByDate_returnsRecordNotFoundForMissingUserDate() {
+        LocalDate date = LocalDate.of(2026, 8, 12);
+        when(dailyRecordRepository.findByUserAndRecordDate(user, date))
+                .thenReturn(Optional.empty());
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> dailyRecordService.getByDate(date, SESSION_TOKEN)
+        );
+
+        assertSame(RecordErrorCode.DAILY_RECORD_NOT_FOUND, exception.getErrorCode());
+    }
+
     private DailyRecordCreateRequestDto request(
             String skinStatus,
             List<Long> morningCosmeticIds,
@@ -426,6 +556,25 @@ class DailyRecordServiceTest {
                 .cosmeticSet(cosmeticSet)
                 .userCosmetic(cosmetic)
                 .itemOrder(1)
+                .build();
+    }
+
+    private DailyRecordSelection selection(
+            DailyRecord dailyRecord,
+            DailyRecordSelectionType type,
+            Long sourceId,
+            String name,
+            List<String> tags,
+            int sortOrder
+    ) {
+        return DailyRecordSelection.builder()
+                .dailyRecord(dailyRecord)
+                .usagePeriod("morning")
+                .selectionType(type)
+                .sourceId(sourceId)
+                .nameSnapshot(name)
+                .tagsSnapshot(tags)
+                .sortOrder(sortOrder)
                 .build();
     }
 

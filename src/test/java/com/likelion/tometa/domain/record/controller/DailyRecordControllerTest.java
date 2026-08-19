@@ -1,8 +1,11 @@
 package com.likelion.tometa.domain.record.controller;
 
+import com.likelion.tometa.domain.record.code.RecordErrorCode;
 import com.likelion.tometa.domain.record.dto.request.DailyRecordCreateRequestDto;
 import com.likelion.tometa.domain.record.dto.response.DailyRecordCreateResponseDto;
+import com.likelion.tometa.domain.record.dto.response.DailyRecordDetailResponseDto;
 import com.likelion.tometa.domain.record.service.DailyRecordService;
+import com.likelion.tometa.global.exception.GeneralException;
 import com.likelion.tometa.global.exception.GlobalExceptionHandler;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -22,7 +26,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
@@ -147,5 +153,73 @@ class DailyRecordControllerTest {
                         """));
 
         verify(dailyRecordService, never()).create(any(), any());
+    }
+
+    @Test
+    void getDailyRecord_returnsDetail() throws Exception {
+        LocalDate date = LocalDate.of(2026, 8, 12);
+        DailyRecordDetailResponseDto response = new DailyRecordDetailResponseDto(
+                37L,
+                date,
+                "bad",
+                List.of(
+                        new DailyRecordDetailResponseDto.SetSelection(
+                                3L,
+                                "calming set",
+                                List.of("heartleaf", "panthenol")
+                        ),
+                        new DailyRecordDetailResponseDto.CosmeticSelection(
+                                11L,
+                                "barrier cream",
+                                List.of("ceramide")
+                        )
+                ),
+                List.of(),
+                "food",
+                List.of(new DailyRecordDetailResponseDto.Image(
+                        "skin-images/1/image.jpg",
+                        "https://signed.example/image.jpg"
+                )),
+                "memo"
+        );
+        when(dailyRecordService.getByDate(date, "session-token"))
+                .thenReturn(response);
+
+        mockMvc.perform(get("/api/daily-records/2026-08-12")
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result.recordId").value(37))
+                .andExpect(jsonPath("$.result.morningSelections[0].selectionType")
+                        .value("SET"))
+                .andExpect(jsonPath("$.result.morningSelections[0].cosmeticSetId")
+                        .value(3))
+                .andExpect(jsonPath("$.result.morningSelections[1].selectionType")
+                        .value("COSMETIC"))
+                .andExpect(jsonPath("$.result.morningSelections[1].userCosmeticId")
+                        .value(11))
+                .andExpect(jsonPath("$.result.images[0].imageKey")
+                        .value("skin-images/1/image.jpg"));
+    }
+
+    @Test
+    void getDailyRecord_returnsNotFoundForMissingDate() throws Exception {
+        LocalDate date = LocalDate.of(2026, 8, 12);
+        when(dailyRecordService.getByDate(date, "session-token"))
+                .thenThrow(new GeneralException(RecordErrorCode.DAILY_RECORD_NOT_FOUND));
+
+        mockMvc.perform(get("/api/daily-records/2026-08-12")
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RECORD_4041"))
+                .andExpect(jsonPath("$.result").doesNotExist());
+    }
+
+    @Test
+    void getDailyRecord_rejectsInvalidDateFormat() throws Exception {
+        mockMvc.perform(get("/api/daily-records/2026-08-xx"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("COMMON_400"));
+
+        verify(dailyRecordService, never()).getByDate(any(), any());
     }
 }

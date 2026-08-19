@@ -37,6 +37,7 @@ app:
       bucket: ${AWS_S3_BUCKET}
       region: ${AWS_REGION:ap-northeast-2}
       presigned-upload-expiration-minutes: 10
+      presigned-download-expiration-minutes: 60
       max-upload-size-bytes: 10485760
       orphan-cleanup:
         retention: 24h

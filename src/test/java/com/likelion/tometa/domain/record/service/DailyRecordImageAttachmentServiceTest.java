@@ -52,6 +52,7 @@ class DailyRecordImageAttachmentServiceTest {
                 "test-bucket",
                 "ap-northeast-2",
                 10,
+                60,
                 10_485_760
         );
         service = new DailyRecordImageAttachmentService(

@@ -13,6 +13,11 @@ public enum RecordErrorCode implements BaseErrorCode {
             HttpStatus.CONFLICT,
             "RECORD_4091",
             "해당 날짜의 기록이 이미 존재합니다."
+    ),
+    DAILY_RECORD_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "RECORD_4041",
+            "해당 날짜의 기록을 찾을 수 없습니다."
     );
 
     private final HttpStatus status;

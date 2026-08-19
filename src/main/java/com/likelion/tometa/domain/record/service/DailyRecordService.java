@@ -5,22 +5,31 @@ import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSetItem;
+import com.likelion.tometa.domain.cosmetic.entity.CosmeticTag;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticIngredientRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
+import com.likelion.tometa.domain.cosmetic.repository.CosmeticTagRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
+import com.likelion.tometa.domain.cosmetic.service.CosmeticSetTagSelector;
 import com.likelion.tometa.domain.record.code.RecordErrorCode;
 import com.likelion.tometa.domain.record.dto.request.DailyRecordCreateRequestDto;
 import com.likelion.tometa.domain.record.dto.response.DailyRecordCreateResponseDto;
+import com.likelion.tometa.domain.record.dto.response.DailyRecordDetailResponseDto;
 import com.likelion.tometa.domain.record.entity.DailyRecord;
 import com.likelion.tometa.domain.record.entity.DailyRecordCosmetic;
 import com.likelion.tometa.domain.record.entity.DailyRecordCosmeticSet;
+import com.likelion.tometa.domain.record.entity.DailyRecordImage;
+import com.likelion.tometa.domain.record.entity.DailyRecordSelection;
+import com.likelion.tometa.domain.record.enums.DailyRecordSelectionType;
 import com.likelion.tometa.domain.record.enums.RecordUsagePeriod;
 import com.likelion.tometa.domain.record.enums.SkinStatus;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticSetRepository;
+import com.likelion.tometa.domain.record.repository.DailyRecordImageRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordRepository;
+import com.likelion.tometa.domain.record.repository.DailyRecordSelectionRepository;
 import com.likelion.tometa.domain.report.entity.DailyReport;
 import com.likelion.tometa.domain.report.repository.DailyReportRepository;
 import com.likelion.tometa.domain.user.entity.User;
@@ -38,6 +47,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -57,12 +67,16 @@ public class DailyRecordService {
     private final DailyRecordRepository dailyRecordRepository;
     private final DailyRecordCosmeticRepository dailyRecordCosmeticRepository;
     private final DailyRecordCosmeticSetRepository dailyRecordCosmeticSetRepository;
+    private final DailyRecordSelectionRepository dailyRecordSelectionRepository;
+    private final DailyRecordImageRepository dailyRecordImageRepository;
     private final DailyReportRepository dailyReportRepository;
     private final UserCosmeticRepository userCosmeticRepository;
     private final CosmeticSetRepository cosmeticSetRepository;
     private final CosmeticSetItemRepository cosmeticSetItemRepository;
     private final CosmeticIngredientRepository cosmeticIngredientRepository;
+    private final CosmeticTagRepository cosmeticTagRepository;
     private final DailyRecordImageAttachmentService imageAttachmentService;
+    private final RecordImageReadUrlService imageReadUrlService;
     private final ObjectMapper objectMapper;
 
     @Transactional
@@ -110,12 +124,44 @@ public class DailyRecordService {
 
         saveSelectedSets(dailyRecord, morning, night);
         saveUsedCosmetics(dailyRecord, morning, night);
+        saveSelectionSnapshots(dailyRecord, morning, night, resources);
         imageAttachmentService.attach(dailyRecord, user, request.imageKeys());
         dailyReportRepository.save(DailyReport.builder()
                 .dailyRecord(dailyRecord)
                 .build());
 
         return new DailyRecordCreateResponseDto(dailyRecord.getId(), request.date());
+    }
+
+    @Transactional
+    public DailyRecordDetailResponseDto getByDate(
+            LocalDate date,
+            String sessionToken
+    ) {
+        User user = sessionUserResolver.resolve(sessionToken);
+        DailyRecord dailyRecord = dailyRecordRepository
+                .findByUserAndRecordDate(user, date)
+                .orElseThrow(() -> new GeneralException(
+                        RecordErrorCode.DAILY_RECORD_NOT_FOUND));
+
+        List<DailyRecordSelection> selections = dailyRecordSelectionRepository
+                .findAllByDailyRecord(dailyRecord);
+        List<DailyRecordDetailResponseDto.Image> images = dailyRecordImageRepository
+                .findAllByDailyRecordOrderBySortOrderAsc(dailyRecord)
+                .stream()
+                .map(this::toImageResponse)
+                .toList();
+
+        return new DailyRecordDetailResponseDto(
+                dailyRecord.getId(),
+                dailyRecord.getRecordDate(),
+                dailyRecord.getSkinStatus(),
+                toSelectionResponses(selections, RecordUsagePeriod.MORNING),
+                toSelectionResponses(selections, RecordUsagePeriod.NIGHT),
+                dailyRecord.getFoodMemo(),
+                images,
+                dailyRecord.getMemo()
+        );
     }
 
     private boolean isDuplicateRecordConstraint(Throwable throwable) {
@@ -199,11 +245,21 @@ public class DailyRecordService {
                 ? List.of()
                 : cosmeticSetItemRepository
                         .findAllActiveByCosmeticSetsOrderBySetAndCosmeticId(cosmeticSets);
-        Map<Long, List<UserCosmetic>> cosmeticsBySetId = setItems.stream()
+        Map<Long, List<CosmeticSetItem>> setItemsBySetId = setItems.stream()
                 .collect(Collectors.groupingBy(
                         item -> item.getCosmeticSet().getId(),
                         LinkedHashMap::new,
-                        Collectors.mapping(CosmeticSetItem::getUserCosmetic, Collectors.toList())
+                        Collectors.toList()
+                ));
+        Map<Long, List<UserCosmetic>> cosmeticsBySetId = setItemsBySetId.entrySet()
+                .stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> entry.getValue().stream()
+                                .map(CosmeticSetItem::getUserCosmetic)
+                                .toList(),
+                        (left, right) -> left,
+                        LinkedHashMap::new
                 ));
 
         if (cosmeticSets.stream().anyMatch(set ->
@@ -214,7 +270,8 @@ public class DailyRecordService {
         return new SelectionResources(
                 cosmetics.stream().collect(Collectors.toMap(UserCosmetic::getId, Function.identity())),
                 cosmeticSets.stream().collect(Collectors.toMap(CosmeticSet::getId, Function.identity())),
-                cosmeticsBySetId
+                cosmeticsBySetId,
+                setItemsBySetId
         );
     }
 
@@ -240,12 +297,173 @@ public class DailyRecordService {
                     .sorted(java.util.Comparator.comparing(UserCosmetic::getId))
                     .forEach(cosmetic -> orderedCosmetics.putIfAbsent(cosmetic.getId(), cosmetic));
         }
-        selectedCosmeticIds.stream()
+        List<UserCosmetic> orderedDirectCosmetics = selectedCosmeticIds.stream()
                 .sorted()
                 .map(resources.cosmeticById()::get)
-                .forEach(cosmetic -> orderedCosmetics.putIfAbsent(cosmetic.getId(), cosmetic));
+                .toList();
+        orderedDirectCosmetics.forEach(cosmetic ->
+                orderedCosmetics.putIfAbsent(cosmetic.getId(), cosmetic));
 
-        return new PeriodSelection(period, orderedSets, new ArrayList<>(orderedCosmetics.values()));
+        return new PeriodSelection(
+                period,
+                orderedSets,
+                new ArrayList<>(orderedCosmetics.values()),
+                orderedDirectCosmetics
+        );
+    }
+
+    private void saveSelectionSnapshots(
+            DailyRecord dailyRecord,
+            PeriodSelection morning,
+            PeriodSelection night,
+            SelectionResources resources
+    ) {
+        Set<Long> directProductIds = java.util.stream.Stream.concat(
+                        morning.directCosmetics().stream(),
+                        night.directCosmetics().stream()
+                )
+                .map(UserCosmetic::getCosmeticProduct)
+                .map(CosmeticProduct::getId)
+                .collect(Collectors.toSet());
+        Map<Long, List<String>> mainIngredientsByProductId =
+                loadMainIngredientNames(directProductIds);
+        Map<Long, List<CosmeticTag>> tagsByProductId = loadSetTags(resources);
+
+        List<DailyRecordSelection> snapshots = new ArrayList<>();
+        snapshots.addAll(toSelectionSnapshots(
+                dailyRecord,
+                morning,
+                resources,
+                mainIngredientsByProductId,
+                tagsByProductId
+        ));
+        snapshots.addAll(toSelectionSnapshots(
+                dailyRecord,
+                night,
+                resources,
+                mainIngredientsByProductId,
+                tagsByProductId
+        ));
+        dailyRecordSelectionRepository.saveAll(snapshots);
+    }
+
+    private List<DailyRecordSelection> toSelectionSnapshots(
+            DailyRecord dailyRecord,
+            PeriodSelection selection,
+            SelectionResources resources,
+            Map<Long, List<String>> mainIngredientsByProductId,
+            Map<Long, List<CosmeticTag>> tagsByProductId
+    ) {
+        List<DailyRecordSelection> snapshots = new ArrayList<>();
+        for (int index = 0; index < selection.sets().size(); index++) {
+            CosmeticSet set = selection.sets().get(index);
+            List<String> tags = CosmeticSetTagSelector.select(
+                    set,
+                    resources.setItemsBySetId().getOrDefault(set.getId(), List.of()),
+                    tagsByProductId
+            );
+            snapshots.add(DailyRecordSelection.builder()
+                    .dailyRecord(dailyRecord)
+                    .usagePeriod(selection.period().getValue())
+                    .selectionType(DailyRecordSelectionType.SET)
+                    .sourceId(set.getId())
+                    .nameSnapshot(set.getName())
+                    .tagsSnapshot(tags)
+                    .sortOrder(index + 1)
+                    .build());
+        }
+
+        for (int index = 0; index < selection.directCosmetics().size(); index++) {
+            UserCosmetic cosmetic = selection.directCosmetics().get(index);
+            CosmeticProduct product = cosmetic.getCosmeticProduct();
+            snapshots.add(DailyRecordSelection.builder()
+                    .dailyRecord(dailyRecord)
+                    .usagePeriod(selection.period().getValue())
+                    .selectionType(DailyRecordSelectionType.COSMETIC)
+                    .sourceId(cosmetic.getId())
+                    .nameSnapshot(product.getProductName())
+                    .tagsSnapshot(mainIngredientsByProductId
+                            .getOrDefault(product.getId(), List.of()))
+                    .sortOrder(index + 1)
+                    .build());
+        }
+        return snapshots;
+    }
+
+    private Map<Long, List<String>> loadMainIngredientNames(Collection<Long> productIds) {
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        return cosmeticIngredientRepository.findAllMainByCosmeticProductIds(productIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        ingredient -> ingredient.getCosmeticProduct().getId(),
+                        LinkedHashMap::new,
+                        Collectors.mapping(
+                                CosmeticIngredient::getIngredientName,
+                                Collectors.toList()
+                        )
+                ));
+    }
+
+    private Map<Long, List<CosmeticTag>> loadSetTags(SelectionResources resources) {
+        Set<Long> productIds = resources.setItemsBySetId().values().stream()
+                .flatMap(Collection::stream)
+                .map(CosmeticSetItem::getUserCosmetic)
+                .map(UserCosmetic::getCosmeticProduct)
+                .map(CosmeticProduct::getId)
+                .collect(Collectors.toSet());
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        return cosmeticTagRepository.findAllByCosmeticProductIds(productIds)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        tag -> tag.getCosmeticProduct().getId(),
+                        HashMap::new,
+                        Collectors.toList()
+                ));
+    }
+
+    private List<DailyRecordDetailResponseDto.Selection> toSelectionResponses(
+            List<DailyRecordSelection> selections,
+            RecordUsagePeriod period
+    ) {
+        return selections.stream()
+                .filter(selection -> selection.getUsagePeriod().equals(period.getValue()))
+                .sorted(Comparator
+                        .comparingInt((DailyRecordSelection selection) ->
+                                selection.getSelectionType() == DailyRecordSelectionType.SET
+                                        ? 0
+                                        : 1)
+                        .thenComparingInt(DailyRecordSelection::getSortOrder))
+                .map(this::toSelectionResponse)
+                .toList();
+    }
+
+    private DailyRecordDetailResponseDto.Selection toSelectionResponse(
+            DailyRecordSelection selection
+    ) {
+        List<String> tags = List.copyOf(selection.getTagsSnapshot());
+        if (selection.getSelectionType() == DailyRecordSelectionType.SET) {
+            return new DailyRecordDetailResponseDto.SetSelection(
+                    selection.getSourceId(),
+                    selection.getNameSnapshot(),
+                    tags
+            );
+        }
+        return new DailyRecordDetailResponseDto.CosmeticSelection(
+                selection.getSourceId(),
+                selection.getNameSnapshot(),
+                tags
+        );
+    }
+
+    private DailyRecordDetailResponseDto.Image toImageResponse(DailyRecordImage image) {
+        return new DailyRecordDetailResponseDto.Image(
+                image.getObjectKey(),
+                imageReadUrlService.issueReadUrl(image.getObjectKey())
+        );
     }
 
     private void saveSelectedSets(
@@ -356,14 +574,16 @@ public class DailyRecordService {
     private record SelectionResources(
             Map<Long, UserCosmetic> cosmeticById,
             Map<Long, CosmeticSet> setById,
-            Map<Long, List<UserCosmetic>> cosmeticsBySetId
+            Map<Long, List<UserCosmetic>> cosmeticsBySetId,
+            Map<Long, List<CosmeticSetItem>> setItemsBySetId
     ) {
     }
 
     private record PeriodSelection(
             RecordUsagePeriod period,
             List<CosmeticSet> sets,
-            List<UserCosmetic> cosmetics
+            List<UserCosmetic> cosmetics,
+            List<UserCosmetic> directCosmetics
     ) {
     }
 
