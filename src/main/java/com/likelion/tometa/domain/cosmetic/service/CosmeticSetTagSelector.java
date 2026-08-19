@@ -132,7 +132,7 @@ public final class CosmeticSetTagSelector {
     private static long stableScore(long setSeed, long itemId, TagKey key) {
         long value = setSeed * 0x9E3779B97F4A7C15L + itemId;
         if (key != null) {
-            value = value * 31 + key.type().ordinal();
+            value = value * 31 + key.type().name().hashCode();
             value = value * 31 + key.name().hashCode();
         }
         value ^= value >>> 30;
