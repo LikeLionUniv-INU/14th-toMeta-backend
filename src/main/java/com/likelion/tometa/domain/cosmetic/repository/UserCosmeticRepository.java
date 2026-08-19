@@ -28,4 +28,18 @@ public interface UserCosmeticRepository extends JpaRepository<UserCosmetic, Long
             Collection<Long> ids,
             User user
     );
+
+    @Query("""
+            select userCosmetic
+            from UserCosmetic userCosmetic
+            join fetch userCosmetic.cosmeticProduct
+            where userCosmetic.id in :ids
+              and userCosmetic.user = :user
+              and userCosmetic.deletedAt is null
+            order by userCosmetic.id
+            """)
+    List<UserCosmetic> findAllActiveByIdsAndUserForRecord(
+            @Param("ids") Collection<Long> ids,
+            @Param("user") User user
+    );
 }
