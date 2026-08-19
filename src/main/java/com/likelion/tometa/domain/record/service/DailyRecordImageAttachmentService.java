@@ -18,9 +18,11 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.ALLOWED_CONTENT_TYPES;
 import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.MAX_IMAGE_COUNT;
+import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.objectKeyPrefix;
 
 @Service
 @RequiredArgsConstructor
@@ -41,7 +43,7 @@ public class DailyRecordImageAttachmentService {
             throw new GeneralException(RecordImageErrorCode.IMAGE_ALREADY_USED);
         }
 
-        List<DailyRecordImage> images = java.util.stream.IntStream.range(0, imageKeys.size())
+        List<DailyRecordImage> images = IntStream.range(0, imageKeys.size())
                 .mapToObj(index -> createImage(
                         dailyRecord,
                         imageKeys.get(index),
@@ -63,18 +65,24 @@ public class DailyRecordImageAttachmentService {
             int sortOrder
     ) {
         HeadObjectResponse object = headObject(objectKey);
-        if (!ALLOWED_CONTENT_TYPES.contains(object.contentType())
-                || object.contentLength() == null
-                || object.contentLength() <= 0
-                || object.contentLength() > properties.maxUploadSizeBytes()) {
+        String contentType = object.contentType();
+        if (contentType == null || !ALLOWED_CONTENT_TYPES.contains(contentType)) {
+            throw new GeneralException(RecordImageErrorCode.UNSUPPORTED_IMAGE_TYPE);
+        }
+
+        Long contentLength = object.contentLength();
+        if (contentLength == null || contentLength <= 0) {
             throw new GeneralException(RecordImageErrorCode.INVALID_IMAGE_KEY);
+        }
+        if (contentLength > properties.maxUploadSizeBytes()) {
+            throw new GeneralException(RecordImageErrorCode.IMAGE_SIZE_EXCEEDED);
         }
 
         return DailyRecordImage.builder()
                 .dailyRecord(dailyRecord)
                 .objectKey(objectKey)
-                .mimeType(object.contentType())
-                .fileSize(object.contentLength())
+                .mimeType(contentType)
+                .fileSize(contentLength)
                 .sortOrder(sortOrder)
                 .build();
     }
@@ -99,9 +107,11 @@ public class DailyRecordImageAttachmentService {
         if (imageKeys.size() > MAX_IMAGE_COUNT) {
             throw new GeneralException(RecordImageErrorCode.INVALID_IMAGE_COUNT);
         }
-        String userPrefix = "skin-images/%d/".formatted(user.getId());
+        String userPrefix = objectKeyPrefix(user.getId());
         if (imageKeys.stream().anyMatch(key -> key == null
                 || key.isBlank()
+                || key.contains("..")
+                || key.contains("//")
                 || !key.startsWith(userPrefix))
                 || new HashSet<>(imageKeys).size() != imageKeys.size()) {
             throw new GeneralException(RecordImageErrorCode.INVALID_IMAGE_KEY);

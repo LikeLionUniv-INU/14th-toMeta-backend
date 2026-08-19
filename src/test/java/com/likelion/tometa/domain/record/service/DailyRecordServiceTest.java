@@ -24,6 +24,7 @@ import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
 import com.likelion.tometa.global.code.GlobalErrorCode;
 import com.likelion.tometa.global.exception.GeneralException;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +32,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
@@ -46,6 +48,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -282,6 +285,70 @@ class DailyRecordServiceTest {
     }
 
     @Test
+    void create_returnsConflictForConcurrentDuplicateDateConstraint() {
+        DailyRecordCreateRequestDto request = request(
+                "normal",
+                List.of(12L),
+                List.of(),
+                List.of(),
+                List.of(),
+                null
+        );
+        UserCosmetic cosmetic = userCosmetic(12L);
+        when(userCosmeticRepository.findAllActiveByIdsAndUserForRecord(Set.of(12L), user))
+                .thenReturn(List.of(cosmetic));
+        ConstraintViolationException constraintViolation =
+                mock(ConstraintViolationException.class);
+        when(constraintViolation.getConstraintName())
+                .thenReturn("uk_daily_records_user_date");
+        when(dailyRecordRepository.saveAndFlush(any(DailyRecord.class)))
+                .thenThrow(new DataIntegrityViolationException(
+                        "duplicate daily record",
+                        constraintViolation
+                ));
+
+        GeneralException exception = assertThrows(
+                GeneralException.class,
+                () -> dailyRecordService.create(request, SESSION_TOKEN)
+        );
+
+        assertSame(RecordErrorCode.DAILY_RECORD_ALREADY_EXISTS, exception.getErrorCode());
+    }
+
+    @Test
+    void create_propagatesUnrelatedDataIntegrityViolation() {
+        DailyRecordCreateRequestDto request = request(
+                "normal",
+                List.of(12L),
+                List.of(),
+                List.of(),
+                List.of(),
+                null
+        );
+        UserCosmetic cosmetic = userCosmetic(12L);
+        when(userCosmeticRepository.findAllActiveByIdsAndUserForRecord(Set.of(12L), user))
+                .thenReturn(List.of(cosmetic));
+        ConstraintViolationException constraintViolation =
+                mock(ConstraintViolationException.class);
+        when(constraintViolation.getConstraintName())
+                .thenReturn("fk_daily_records_user");
+        DataIntegrityViolationException dataAccessException =
+                new DataIntegrityViolationException(
+                        "unrelated constraint",
+                        constraintViolation
+                );
+        when(dailyRecordRepository.saveAndFlush(any(DailyRecord.class)))
+                .thenThrow(dataAccessException);
+
+        DataIntegrityViolationException exception = assertThrows(
+                DataIntegrityViolationException.class,
+                () -> dailyRecordService.create(request, SESSION_TOKEN)
+        );
+
+        assertSame(dataAccessException, exception);
+    }
+
+    @Test
     void create_rejectsMorningUseOfNightSet() {
         CosmeticSet nightSet = cosmeticSet(7L, CosmeticSetUsageTime.NIGHT);
         UserCosmetic cosmetic = userCosmetic(22L);
@@ -317,7 +384,7 @@ class DailyRecordServiceTest {
             String memo
     ) {
         return new DailyRecordCreateRequestDto(
-                LocalDate.of(2026, 8, 12),
+                LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1),
                 skinStatus,
                 morningCosmeticIds,
                 morningSetIds,

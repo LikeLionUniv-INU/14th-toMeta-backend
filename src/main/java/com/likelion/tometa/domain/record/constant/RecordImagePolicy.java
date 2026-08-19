@@ -12,6 +12,10 @@ public final class RecordImagePolicy {
             "image/webp"
     );
 
+    public static String objectKeyPrefix(Long userId) {
+        return "skin-images/%d/".formatted(userId);
+    }
+
     private RecordImagePolicy() {
     }
 }

@@ -25,6 +25,7 @@ import java.util.UUID;
 
 import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.ALLOWED_CONTENT_TYPES;
 import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.MAX_IMAGE_COUNT;
+import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.objectKeyPrefix;
 
 @Service
 @RequiredArgsConstructor
@@ -124,8 +125,8 @@ public class RecordImageStorageService {
         LocalDate today = LocalDate.now(KOREA_ZONE);
         String extension = EXTENSIONS.get(contentType);
 
-        return "skin-images/%d/%04d/%02d/%02d/%s.%s".formatted(
-                userId,
+        return "%s%04d/%02d/%02d/%s.%s".formatted(
+                objectKeyPrefix(userId),
                 today.getYear(),
                 today.getMonthValue(),
                 today.getDayOfMonth(),

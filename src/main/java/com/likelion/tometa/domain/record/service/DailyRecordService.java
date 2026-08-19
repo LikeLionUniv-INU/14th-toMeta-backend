@@ -28,6 +28,7 @@ import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
 import com.likelion.tometa.global.code.GlobalErrorCode;
 import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -101,7 +102,10 @@ public class DailyRecordService {
         try {
             dailyRecordRepository.saveAndFlush(dailyRecord);
         } catch (DataIntegrityViolationException e) {
-            throw new GeneralException(RecordErrorCode.DAILY_RECORD_ALREADY_EXISTS);
+            if (isDuplicateRecordConstraint(e)) {
+                throw new GeneralException(RecordErrorCode.DAILY_RECORD_ALREADY_EXISTS);
+            }
+            throw e;
         }
 
         saveSelectedSets(dailyRecord, morning, night);
@@ -112,6 +116,18 @@ public class DailyRecordService {
                 .build());
 
         return new DailyRecordCreateResponseDto(dailyRecord.getId(), request.date());
+    }
+
+    private boolean isDuplicateRecordConstraint(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof ConstraintViolationException constraintViolation) {
+                return "uk_daily_records_user_date"
+                        .equalsIgnoreCase(constraintViolation.getConstraintName());
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private SkinStatus validateRequest(DailyRecordCreateRequestDto request) {
