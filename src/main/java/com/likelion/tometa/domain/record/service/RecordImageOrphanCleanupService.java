@@ -10,8 +10,11 @@ import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
 import java.time.Clock;
@@ -38,13 +41,16 @@ public class RecordImageOrphanCleanupService {
     )
     public void cleanupOrphanImages() {
         try {
-            CleanupResult result = cleanup(clock.instant().minus(cleanupProperties.retention()));
+            Instant cutoff = clock.instant().minus(cleanupProperties.retention());
+            int recovered = recoverIncompleteDeletions(cutoff);
+            CleanupResult result = cleanup(cutoff);
             log.info(
-                    "Orphan image cleanup completed. scanned: {}, eligible: {}, protected: {}, deleted: {}, failed: {}",
+                    "Orphan image cleanup completed. scanned: {}, eligible: {}, protected: {}, deleted: {}, recovered: {}, failed: {}",
                     result.scanned(),
                     result.eligible(),
                     result.protectedCount(),
                     result.deleted(),
+                    recovered,
                     result.failed()
             );
         } catch (RuntimeException e) {
@@ -92,8 +98,11 @@ public class RecordImageOrphanCleanupService {
 
                 try {
                     deleteObject(candidate);
-                    recordImageOwnershipService.markDeleted(candidate.key(), claimToken.get());
-                    deleted++;
+                    if (finalizeDeletion(candidate.key(), claimToken.get())) {
+                        deleted++;
+                    } else {
+                        failed++;
+                    }
                 } catch (SdkException e) {
                     failed++;
                     releaseClaim(candidate.key(), claimToken.get());
@@ -101,12 +110,6 @@ public class RecordImageOrphanCleanupService {
                             .setCause(e)
                             .addArgument(candidate.key())
                             .log("Failed to delete orphan image: {}");
-                } catch (RuntimeException e) {
-                    failed++;
-                    log.atError()
-                            .setCause(e)
-                            .addArgument(candidate.key())
-                            .log("Failed to finalize orphan image deletion: {}");
                 }
             }
 
@@ -114,6 +117,82 @@ public class RecordImageOrphanCleanupService {
         } while (continuationToken != null);
 
         return new CleanupResult(scanned, eligible, protectedCount, deleted, failed);
+    }
+
+    private int recoverIncompleteDeletions(Instant cutoff) {
+        int recovered = 0;
+        List<String> objectKeys = recordImageOwnershipService.findRecoverableCleanupKeys(
+                cleanupProperties.batchSize()
+        );
+        for (String objectKey : objectKeys) {
+            Optional<String> claimToken;
+            try {
+                claimToken = recordImageOwnershipService.claimForCleanup(objectKey);
+            } catch (RuntimeException e) {
+                logRecoveryFailure("Failed to reclaim orphan image", objectKey, e);
+                continue;
+            }
+            if (claimToken.isEmpty()) {
+                continue;
+            }
+
+            RecoveryObjectLookup lookup = findObjectForRecovery(
+                    objectKey,
+                    claimToken.get(),
+                    cutoff
+            );
+            if (!lookup.resolvable()) {
+                continue;
+            }
+            if (lookup.object() != null) {
+                try {
+                    deleteObject(lookup.object());
+                } catch (SdkException e) {
+                    releaseClaim(objectKey, claimToken.get());
+                    logRecoveryFailure("Failed to retry orphan image deletion", objectKey, e);
+                    continue;
+                }
+            }
+            if (finalizeDeletion(objectKey, claimToken.get())) {
+                recovered++;
+            }
+        }
+        return recovered;
+    }
+
+    private RecoveryObjectLookup findObjectForRecovery(
+            String objectKey,
+            String claimToken,
+            Instant cutoff
+    ) {
+        try {
+            HeadObjectResponse response = s3Client.headObject(HeadObjectRequest.builder()
+                    .bucket(storageProperties.bucket())
+                    .key(objectKey)
+                    .build());
+            S3Object object = S3Object.builder()
+                    .key(objectKey)
+                    .eTag(response.eTag())
+                    .lastModified(response.lastModified())
+                    .size(response.contentLength())
+                    .build();
+            if (!isCleanupCandidate(object, cutoff)) {
+                releaseClaim(objectKey, claimToken);
+                return RecoveryObjectLookup.unresolvable();
+            }
+            return RecoveryObjectLookup.found(object);
+        } catch (S3Exception e) {
+            if (e.statusCode() == 404) {
+                return RecoveryObjectLookup.missing();
+            }
+            releaseClaim(objectKey, claimToken);
+            logRecoveryFailure("Failed to inspect orphan image recovery state", objectKey, e);
+            return RecoveryObjectLookup.unresolvable();
+        } catch (SdkException e) {
+            releaseClaim(objectKey, claimToken);
+            logRecoveryFailure("Failed to inspect orphan image recovery state", objectKey, e);
+            return RecoveryObjectLookup.unresolvable();
+        }
     }
 
     private ListObjectsV2Response listObjects(String continuationToken) {
@@ -155,6 +234,23 @@ public class RecordImageOrphanCleanupService {
         }
     }
 
+    private boolean finalizeDeletion(String objectKey, String claimToken) {
+        try {
+            recordImageOwnershipService.markDeleted(objectKey, claimToken);
+            return true;
+        } catch (RuntimeException e) {
+            logRecoveryFailure("Failed to finalize orphan image deletion", objectKey, e);
+            return false;
+        }
+    }
+
+    private void logRecoveryFailure(String message, String objectKey, Throwable throwable) {
+        log.atError()
+                .setCause(throwable)
+                .addArgument(objectKey)
+                .log(message + ": {}");
+    }
+
     private String nextContinuationToken(ListObjectsV2Response response) {
         if (!Boolean.TRUE.equals(response.isTruncated())) {
             return null;
@@ -170,5 +266,20 @@ public class RecordImageOrphanCleanupService {
             int deleted,
             int failed
     ) {
+    }
+
+    private record RecoveryObjectLookup(boolean resolvable, S3Object object) {
+
+        private static RecoveryObjectLookup found(S3Object object) {
+            return new RecoveryObjectLookup(true, object);
+        }
+
+        private static RecoveryObjectLookup missing() {
+            return new RecoveryObjectLookup(true, null);
+        }
+
+        private static RecoveryObjectLookup unresolvable() {
+            return new RecoveryObjectLookup(false, null);
+        }
     }
 }

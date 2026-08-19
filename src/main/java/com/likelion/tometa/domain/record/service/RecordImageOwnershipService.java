@@ -7,6 +7,7 @@ import com.likelion.tometa.domain.record.repository.RecordImageObjectRepository;
 import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +62,15 @@ public class RecordImageOwnershipService {
             return Optional.of(claimToken);
         }
         return Optional.empty();
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> findRecoverableCleanupKeys(int limit) {
+        return recordImageObjectRepository.findCleanupClaimKeysClaimedBefore(
+                RecordImageObjectStatus.CLEANUP_CLAIMED,
+                clock.instant().minus(CLEANUP_CLAIM_LEASE),
+                PageRequest.of(0, limit)
+        );
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -25,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -177,5 +180,19 @@ class RecordImageOwnershipServiceTest {
         assertTrue(claimToken.isPresent());
         assertFalse("expired-claim".equals(claimToken.get()));
         assertEquals(claimToken.get(), object.getCleanupClaimToken());
+    }
+
+    @Test
+    void findRecoverableCleanupKeys_returnsExpiredClaimsInRequestedBatch() {
+        List<String> keys = List.of("skin-images/1/stale.jpg");
+        when(recordImageObjectRepository.findCleanupClaimKeysClaimedBefore(
+                eq(RecordImageObjectStatus.CLEANUP_CLAIMED),
+                eq(NOW.minus(Duration.ofMinutes(15))),
+                any(Pageable.class)
+        )).thenReturn(keys);
+
+        List<String> result = service.findRecoverableCleanupKeys(100);
+
+        assertEquals(keys, result);
     }
 }

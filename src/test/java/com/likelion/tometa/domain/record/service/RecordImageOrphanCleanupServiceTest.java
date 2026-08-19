@@ -6,11 +6,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.S3Exception;
@@ -20,11 +22,16 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -144,6 +151,39 @@ class RecordImageOrphanCleanupServiceTest {
 
         verify(s3Client, never()).deleteObject(any(DeleteObjectRequest.class));
         verify(recordImageOwnershipService, never()).markDeleted(any(), any());
+    }
+
+    @Test
+    void cleanupOrphanImages_recoversFinalizationAfterObjectWasDeleted() {
+        String objectKey = "skin-images/1/deleted-before-finalization.jpg";
+        S3Object candidate = object(objectKey, NOW.minus(Duration.ofDays(2)));
+        when(recordImageOwnershipService.findRecoverableCleanupKeys(2))
+                .thenReturn(List.of())
+                .thenReturn(List.of(objectKey));
+        when(recordImageOwnershipService.claimForCleanup(objectKey))
+                .thenReturn(Optional.of("initial-claim"))
+                .thenReturn(Optional.of("recovery-claim"));
+        when(s3Client.listObjectsV2(any(ListObjectsV2Request.class)))
+                .thenReturn(
+                        page(false, null, candidate),
+                        page(false, null)
+                );
+        when(s3Client.headObject(any(HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(404).build());
+        doThrow(new IllegalStateException("temporary database failure"))
+                .doNothing()
+                .when(recordImageOwnershipService)
+                .markDeleted(anyString(), anyString());
+
+        service.cleanupOrphanImages();
+        service.cleanupOrphanImages();
+
+        verify(s3Client).deleteObject(any(DeleteObjectRequest.class));
+        InOrder finalizationOrder = inOrder(recordImageOwnershipService);
+        finalizationOrder.verify(recordImageOwnershipService)
+                .markDeleted(objectKey, "initial-claim");
+        finalizationOrder.verify(recordImageOwnershipService)
+                .markDeleted(objectKey, "recovery-claim");
     }
 
     @Test
