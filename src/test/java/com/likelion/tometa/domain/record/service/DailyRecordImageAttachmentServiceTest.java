@@ -5,7 +5,7 @@ import com.likelion.tometa.domain.record.entity.DailyRecord;
 import com.likelion.tometa.domain.record.entity.DailyRecordImage;
 import com.likelion.tometa.domain.record.repository.DailyRecordImageRepository;
 import com.likelion.tometa.domain.user.entity.User;
-import com.likelion.tometa.global.config.S3StorageProperties;
+import com.likelion.tometa.global.config.s3.S3StorageProperties;
 import com.likelion.tometa.global.exception.GeneralException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -38,6 +39,8 @@ class DailyRecordImageAttachmentServiceTest {
     private S3Client s3Client;
     @Mock
     private DailyRecordImageRepository dailyRecordImageRepository;
+    @Mock
+    private RecordImageOwnershipService recordImageOwnershipService;
 
     private DailyRecordImageAttachmentService service;
     private User user;
@@ -54,7 +57,8 @@ class DailyRecordImageAttachmentServiceTest {
         service = new DailyRecordImageAttachmentService(
                 s3Client,
                 properties,
-                dailyRecordImageRepository
+                dailyRecordImageRepository,
+                recordImageOwnershipService
         );
         user = User.builder().build();
         ReflectionTestUtils.setField(user, "id", 1L);
@@ -89,6 +93,7 @@ class DailyRecordImageAttachmentServiceTest {
         assertEquals(List.of(1, 2), images.stream()
                 .map(DailyRecordImage::getSortOrder)
                 .toList());
+        verify(recordImageOwnershipService).claimForAttachment(user.getId(), keys);
     }
 
     @Test
@@ -197,13 +202,20 @@ class DailyRecordImageAttachmentServiceTest {
 
         assertSame(RecordImageErrorCode.INVALID_IMAGE_KEY, exception.getErrorCode());
         verify(s3Client, never()).headObject(any(HeadObjectRequest.class));
-        verify(dailyRecordImageRepository, never()).existsByObjectKeyIn(any());
+        verify(recordImageOwnershipService, never()).claimForAttachment(any(), any());
     }
 
     @Test
-    void attach_rejectsAlreadyUsedImageBeforeS3Request() {
+    void attach_rejectsAlreadyUsedImageDuringOwnershipClaim() {
         List<String> keys = List.of("skin-images/1/image.jpg");
-        when(dailyRecordImageRepository.existsByObjectKeyIn(keys)).thenReturn(true);
+        when(s3Client.headObject(any(HeadObjectRequest.class)))
+                .thenReturn(HeadObjectResponse.builder()
+                        .contentType("image/jpeg")
+                        .contentLength(100L)
+                        .build());
+        doThrow(new GeneralException(RecordImageErrorCode.IMAGE_ALREADY_USED))
+                .when(recordImageOwnershipService)
+                .claimForAttachment(user.getId(), keys);
 
         GeneralException exception = assertThrows(
                 GeneralException.class,
@@ -211,7 +223,7 @@ class DailyRecordImageAttachmentServiceTest {
         );
 
         assertSame(RecordImageErrorCode.IMAGE_ALREADY_USED, exception.getErrorCode());
-        verify(s3Client, never()).headObject(any(HeadObjectRequest.class));
+        verify(dailyRecordImageRepository, never()).saveAllAndFlush(any());
     }
 
     @Test

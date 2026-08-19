@@ -5,10 +5,11 @@ import com.likelion.tometa.domain.record.dto.request.RecordImageUploadUrlRequest
 import com.likelion.tometa.domain.record.dto.response.RecordImageUploadUrlResponseDto;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
-import com.likelion.tometa.global.config.S3StorageProperties;
+import com.likelion.tometa.global.config.s3.S3StorageProperties;
 import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -42,7 +43,9 @@ public class RecordImageStorageService {
     private final AnonymousSessionUserResolver sessionUserResolver;
     private final S3Presigner s3Presigner;
     private final S3StorageProperties properties;
+    private final RecordImageOwnershipService recordImageOwnershipService;
 
+    @Transactional
     public RecordImageUploadUrlResponseDto issueUploadUrl(
             RecordImageUploadUrlRequestDto request,
             String sessionToken
@@ -61,6 +64,12 @@ public class RecordImageStorageService {
         List<RecordImageUploadUrlResponseDto.UploadInfo> uploads = request.images().stream()
                 .map(image -> createPresignedUploadUrl(user, image, expiration, expiresAt))
                 .toList();
+        recordImageOwnershipService.registerPending(
+                user.getId(),
+                uploads.stream()
+                        .map(RecordImageUploadUrlResponseDto.UploadInfo::objectKey)
+                        .toList()
+        );
 
         return new RecordImageUploadUrlResponseDto(uploads);
     }

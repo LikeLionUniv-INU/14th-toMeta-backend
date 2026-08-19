@@ -38,3 +38,8 @@ app:
         batch-size: 500
         cron: "0 0 * * * *"
         zone: Asia/Seoul
+
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      model: ${OPENAI_MODEL:gpt-5-mini}

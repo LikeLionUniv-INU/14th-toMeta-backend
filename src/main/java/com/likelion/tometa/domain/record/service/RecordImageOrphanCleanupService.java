@@ -1,8 +1,7 @@
 package com.likelion.tometa.domain.record.service;
 
-import com.likelion.tometa.domain.record.repository.DailyRecordImageRepository;
-import com.likelion.tometa.global.config.S3OrphanCleanupProperties;
-import com.likelion.tometa.global.config.S3StorageProperties;
+import com.likelion.tometa.global.config.s3.S3OrphanCleanupProperties;
+import com.likelion.tometa.global.config.s3.S3StorageProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -14,10 +13,10 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
 import software.amazon.awssdk.services.s3.model.S3Object;
 
+import java.time.Clock;
 import java.time.Instant;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Optional;
 
 import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.OBJECT_KEY_ROOT_PREFIX;
 
@@ -29,7 +28,8 @@ public class RecordImageOrphanCleanupService {
     private final S3Client s3Client;
     private final S3StorageProperties storageProperties;
     private final S3OrphanCleanupProperties cleanupProperties;
-    private final DailyRecordImageRepository dailyRecordImageRepository;
+    private final RecordImageOwnershipService recordImageOwnershipService;
+    private final Clock clock;
 
     @Scheduled(
             cron = "${app.storage.s3.orphan-cleanup.cron}",
@@ -37,12 +37,12 @@ public class RecordImageOrphanCleanupService {
     )
     public void cleanupOrphanImages() {
         try {
-            CleanupResult result = cleanup(Instant.now().minus(cleanupProperties.retention()));
+            CleanupResult result = cleanup(clock.instant().minus(cleanupProperties.retention()));
             log.info(
-                    "Orphan image cleanup completed. scanned: {}, eligible: {}, referenced: {}, deleted: {}, failed: {}",
+                    "Orphan image cleanup completed. scanned: {}, eligible: {}, protected: {}, deleted: {}, failed: {}",
                     result.scanned(),
                     result.eligible(),
-                    result.referenced(),
+                    result.protectedCount(),
                     result.deleted(),
                     result.failed()
             );
@@ -54,7 +54,7 @@ public class RecordImageOrphanCleanupService {
     private CleanupResult cleanup(Instant cutoff) {
         int scanned = 0;
         int eligible = 0;
-        int referenced = 0;
+        int protectedCount = 0;
         int deleted = 0;
         int failed = 0;
         String continuationToken = null;
@@ -64,33 +64,43 @@ public class RecordImageOrphanCleanupService {
             List<S3Object> objects = response.contents();
             scanned += objects.size();
 
-            List<String> candidateKeys = objects.stream()
+            List<S3Object> candidates = objects.stream()
                     .filter(object -> isCleanupCandidate(object, cutoff))
-                    .map(S3Object::key)
                     .toList();
-            eligible += candidateKeys.size();
+            eligible += candidates.size();
 
-            Set<String> referencedKeys = findReferencedKeys(candidateKeys);
-            referenced += referencedKeys.size();
-
-            for (String objectKey : candidateKeys) {
-                if (referencedKeys.contains(objectKey)) {
+            for (S3Object candidate : candidates) {
+                Optional<String> claimToken;
+                try {
+                    claimToken = recordImageOwnershipService.claimForCleanup(candidate.key());
+                } catch (RuntimeException e) {
+                    failed++;
+                    log.warn("Failed to claim orphan image: " + candidate.key(), e);
+                    continue;
+                }
+                if (claimToken.isEmpty()) {
+                    protectedCount++;
                     continue;
                 }
 
                 try {
-                    deleteObject(objectKey);
+                    deleteObject(candidate);
+                    recordImageOwnershipService.markDeleted(candidate.key(), claimToken.get());
                     deleted++;
                 } catch (SdkException e) {
                     failed++;
-                    log.warn("Failed to delete orphan image. objectKey: {}", objectKey, e);
+                    releaseClaim(candidate.key(), claimToken.get());
+                    log.warn("Failed to delete orphan image: " + candidate.key(), e);
+                } catch (RuntimeException e) {
+                    failed++;
+                    log.warn("Failed to finalize orphan image deletion: " + candidate.key(), e);
                 }
             }
 
             continuationToken = nextContinuationToken(response);
         } while (continuationToken != null);
 
-        return new CleanupResult(scanned, eligible, referenced, deleted, failed);
+        return new CleanupResult(scanned, eligible, protectedCount, deleted, failed);
     }
 
     private ListObjectsV2Response listObjects(String continuationToken) {
@@ -108,21 +118,25 @@ public class RecordImageOrphanCleanupService {
         return object.key() != null
                 && !object.key().isBlank()
                 && object.lastModified() != null
-                && object.lastModified().isBefore(cutoff);
+                && object.eTag() != null
+                && !object.eTag().isBlank()
+                && !object.lastModified().isAfter(cutoff);
     }
 
-    private Set<String> findReferencedKeys(List<String> candidateKeys) {
-        if (candidateKeys.isEmpty()) {
-            return Set.of();
-        }
-        return new HashSet<>(dailyRecordImageRepository.findReferencedObjectKeys(candidateKeys));
-    }
-
-    private void deleteObject(String objectKey) {
+    private void deleteObject(S3Object object) {
         s3Client.deleteObject(DeleteObjectRequest.builder()
                 .bucket(storageProperties.bucket())
-                .key(objectKey)
+                .key(object.key())
+                .ifMatch(object.eTag())
                 .build());
+    }
+
+    private void releaseClaim(String objectKey, String claimToken) {
+        try {
+            recordImageOwnershipService.releaseCleanupClaim(objectKey, claimToken);
+        } catch (RuntimeException e) {
+            log.error("Failed to release orphan image cleanup claim: " + objectKey, e);
+        }
     }
 
     private String nextContinuationToken(ListObjectsV2Response response) {
@@ -136,7 +150,7 @@ public class RecordImageOrphanCleanupService {
     private record CleanupResult(
             int scanned,
             int eligible,
-            int referenced,
+            int protectedCount,
             int deleted,
             int failed
     ) {

@@ -36,7 +36,7 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
-        assertEquals(4, successfulMigrationCount(jdbcUrl));
+        assertEquals(5, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -58,7 +58,7 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
-        assertEquals(4, successfulMigrationCount(jdbcUrl));
+        assertEquals(5, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -97,7 +97,7 @@ class FlywayMigrationIntegrationTest {
                                 + "and created_at = timestamp '2025-01-02 03:04:05'"
                 )
         );
-        assertEquals(4, successfulMigrationCount(jdbcUrl));
+        assertEquals(5, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -137,6 +137,15 @@ class FlywayMigrationIntegrationTest {
                     (1, 1, date '2026-08-12', 'normal', current_timestamp, current_timestamp)
                 """);
         executeUpdate(jdbcUrl, """
+                insert into daily_record_images (
+                    daily_record_image_id, daily_record_id, object_key,
+                    mime_type, file_size, sort_order, created_at
+                ) values (
+                    1, 1, 'skin-images/1/attached.jpg',
+                    'image/jpeg', 100, 1, current_timestamp
+                )
+                """);
+        executeUpdate(jdbcUrl, """
                 insert into daily_record_cosmetics (
                     daily_record_cosmetic_id, daily_record_id, user_cosmetic_id,
                     usage_period, product_type_snapshot, product_name_snapshot, created_at
@@ -159,6 +168,11 @@ class FlywayMigrationIntegrationTest {
         assertEquals(2, queryForInt(jdbcUrl,
                 "select sort_order from daily_record_cosmetics "
                         + "where daily_record_cosmetic_id = 20"));
+        assertEquals(1, queryForInt(jdbcUrl,
+                "select count(*) from record_image_objects "
+                        + "where owner_user_id = 1 "
+                        + "and object_key = 'skin-images/1/attached.jpg' "
+                        + "and status = 'ATTACHED'"));
     }
 
     private void migrateAfterSignal(

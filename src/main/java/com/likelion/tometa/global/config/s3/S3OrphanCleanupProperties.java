@@ -1,4 +1,4 @@
-package com.likelion.tometa.global.config;
+package com.likelion.tometa.global.config.s3;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;

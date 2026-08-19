@@ -5,7 +5,7 @@ import com.likelion.tometa.domain.record.entity.DailyRecord;
 import com.likelion.tometa.domain.record.entity.DailyRecordImage;
 import com.likelion.tometa.domain.record.repository.DailyRecordImageRepository;
 import com.likelion.tometa.domain.user.entity.User;
-import com.likelion.tometa.global.config.S3StorageProperties;
+import com.likelion.tometa.global.config.s3.S3StorageProperties;
 import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,6 +31,7 @@ public class DailyRecordImageAttachmentService {
     private final S3Client s3Client;
     private final S3StorageProperties properties;
     private final DailyRecordImageRepository dailyRecordImageRepository;
+    private final RecordImageOwnershipService recordImageOwnershipService;
 
     public void attach(DailyRecord dailyRecord, User user, List<String> imageKeys) {
         if (imageKeys == null || imageKeys.isEmpty()) {
@@ -39,10 +40,6 @@ public class DailyRecordImageAttachmentService {
 
         validateKeys(user, imageKeys);
 
-        if (dailyRecordImageRepository.existsByObjectKeyIn(imageKeys)) {
-            throw new GeneralException(RecordImageErrorCode.IMAGE_ALREADY_USED);
-        }
-
         List<DailyRecordImage> images = IntStream.range(0, imageKeys.size())
                 .mapToObj(index -> createImage(
                         dailyRecord,
@@ -50,6 +47,7 @@ public class DailyRecordImageAttachmentService {
                         index + 1
                 ))
                 .toList();
+        recordImageOwnershipService.claimForAttachment(user.getId(), imageKeys);
 
         try {
             dailyRecordImageRepository.saveAllAndFlush(images);
