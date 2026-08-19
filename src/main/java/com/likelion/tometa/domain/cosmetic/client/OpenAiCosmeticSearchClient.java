@@ -110,6 +110,7 @@ public class OpenAiCosmeticSearchClient {
                 "type", "web_search",
                 "search_context_size", "low"
         )));
+        body.put("tool_choice", "required");
         body.put("instructions", INSTRUCTIONS);
         body.put("input", "검색할 화장품: " + keyword);
         body.put("text", Map.of("format", createResponseFormat()));
