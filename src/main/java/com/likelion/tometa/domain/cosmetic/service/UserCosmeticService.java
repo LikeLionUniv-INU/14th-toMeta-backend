@@ -254,7 +254,7 @@ public class UserCosmeticService {
     private List<String> createSearchResponseTags(CosmeticSearchCandidate candidate) {
         List<String> tags = new ArrayList<>(MAX_SEARCH_RESPONSE_INGREDIENT_COUNT + 2);
 
-        tags.add(candidate.productType());
+        tags.add(ProductType.displayNameOf(candidate.productType()));
         tags.add(candidate.benefit());
 
         candidate.mainIngredients().stream()

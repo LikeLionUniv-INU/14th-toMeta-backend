@@ -7,6 +7,7 @@ import com.likelion.tometa.domain.cosmetic.entity.CosmeticSetItem;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticTag;
 import com.likelion.tometa.domain.cosmetic.entity.UserCosmetic;
 import com.likelion.tometa.domain.cosmetic.enums.CosmeticTagType;
+import com.likelion.tometa.domain.cosmetic.enums.ProductType;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticTagRepository;
@@ -131,7 +132,7 @@ public class CosmeticOptionService {
                 List.of()
         );
         List<String> tags = new ArrayList<>();
-        tags.add(product.getProductType());
+        tags.add(ProductType.displayNameOf(product.getProductType()));
 
         if (MANUAL_SOURCE_TYPE.equals(product.getSourceType())) {
             appendTags(
