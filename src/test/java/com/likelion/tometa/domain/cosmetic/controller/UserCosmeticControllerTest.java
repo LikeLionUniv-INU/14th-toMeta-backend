@@ -151,7 +151,7 @@ class UserCosmeticControllerTest {
                                 {
                                   "productName": "제품명",
                                   "productType": "serum",
-                                  "mainIngredients": ["1", "2", "3", "4", "5", "6"]
+                                  "mainIngredients": ["1", "2", "3", "4"]
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -159,7 +159,7 @@ class UserCosmeticControllerTest {
                         {
                           "isSuccess": false,
                           "code": "COSMETIC_4001",
-                          "message": "주요 성분은 최대 5개까지 입력할 수 있습니다.",
+                          "message": "주요 성분은 최대 3개까지 입력할 수 있습니다.",
                           "result": null
                         }
                         """));
