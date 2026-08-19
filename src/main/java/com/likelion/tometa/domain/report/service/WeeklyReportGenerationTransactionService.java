@@ -22,9 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.time.ZoneId;
+import java.time.*;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -34,6 +32,8 @@ import java.util.stream.IntStream;
 @Service
 @RequiredArgsConstructor
 public class WeeklyReportGenerationTransactionService {
+
+    private static final Duration GENERATION_TIMEOUT = Duration.ofMinutes(2);
 
     private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
     private static final String COMPLETED = "completed";
@@ -84,9 +84,13 @@ public class WeeklyReportGenerationTransactionService {
         }
 
         if (GENERATING.equals(weeklyReport.getReportStatus())) {
-            throw new GeneralException(
-                    ReportErrorCode.WEEKLY_REPORT_GENERATION_IN_PROGRESS
-            );
+            if (!isGenerationExpired(weeklyReport)) {
+                throw new GeneralException(
+                        ReportErrorCode.WEEKLY_REPORT_GENERATION_IN_PROGRESS
+                );
+            }
+
+            weeklyReport.markCollecting();
         }
 
         List<DailyReport> dailyReports =
@@ -339,5 +343,15 @@ public class WeeklyReportGenerationTransactionService {
         public boolean requiresGeneration() {
             return context != null;
         }
+    }
+
+    private boolean isGenerationExpired(WeeklyReport weeklyReport) {
+        LocalDateTime generationStartedAt =
+                weeklyReport.getGenerationStartedAt();
+
+        return generationStartedAt == null
+                || generationStartedAt
+                .plus(GENERATION_TIMEOUT)
+                .isBefore(LocalDateTime.now());
     }
 }

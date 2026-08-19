@@ -58,6 +58,9 @@ public class WeeklyReport extends BaseTimeEntity {
     @Column(name = "regenerated_at")
     private LocalDateTime regeneratedAt;
 
+    @Column(name = "generation_started_at")
+    private LocalDateTime generationStartedAt;
+
     @Builder
     private WeeklyReport(
             User user,
@@ -75,10 +78,12 @@ public class WeeklyReport extends BaseTimeEntity {
 
     public void markGenerating() {
         this.reportStatus = "generating";
+        this.generationStartedAt = LocalDateTime.now();
     }
 
     public void markCollecting() {
         this.reportStatus = "collecting";
+        this.generationStartedAt = null;
     }
 
     public void complete(
@@ -88,6 +93,7 @@ public class WeeklyReport extends BaseTimeEntity {
         this.weeklySummary = weeklySummary;
         this.personalizedSolution = personalizedSolution;
         this.reportStatus = "completed";
+        this.generationStartedAt = null;
         this.generatedAt = LocalDateTime.now();
     }
 
@@ -98,6 +104,7 @@ public class WeeklyReport extends BaseTimeEntity {
         this.weeklySummary = weeklySummary;
         this.personalizedSolution = personalizedSolution;
         this.reportStatus = "completed";
+        this.generationStartedAt = null;
         this.regeneratedAt = LocalDateTime.now();
     }
 
