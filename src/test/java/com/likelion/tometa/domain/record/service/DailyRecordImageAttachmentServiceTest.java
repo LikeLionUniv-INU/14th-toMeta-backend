@@ -20,6 +20,7 @@ import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.util.List;
+import java.time.LocalDateTime;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -287,6 +288,9 @@ class DailyRecordImageAttachmentServiceTest {
                 .fileSize(123L)
                 .sortOrder(1)
                 .build();
+        ReflectionTestUtils.setField(retained, "id", 101L);
+        LocalDateTime retainedCreatedAt = LocalDateTime.of(2026, 8, 12, 10, 30);
+        ReflectionTestUtils.setField(retained, "createdAt", retainedCreatedAt);
         DailyRecordImage removed = DailyRecordImage.builder()
                 .dailyRecord(dailyRecord)
                 .objectKey(removedKey)
@@ -314,7 +318,7 @@ class DailyRecordImageAttachmentServiceTest {
                 List.of(removedKey),
                 List.of(addedKey)
         );
-        verify(dailyRecordImageRepository).deleteAll(List.of(retained, removed));
+        verify(dailyRecordImageRepository).deleteAll(List.of(removed));
         ArgumentCaptor<Iterable<DailyRecordImage>> captor = iterableCaptor();
         verify(dailyRecordImageRepository).saveAllAndFlush(captor.capture());
         List<DailyRecordImage> replacements = StreamSupport
@@ -329,7 +333,56 @@ class DailyRecordImageAttachmentServiceTest {
         assertEquals(List.of(1, 2), replacements.stream()
                 .map(DailyRecordImage::getSortOrder)
                 .toList());
+        assertSame(retained, replacements.get(1));
+        assertEquals(101L, replacements.get(1).getId());
+        assertEquals(retainedCreatedAt, replacements.get(1).getCreatedAt());
         verify(s3Client, times(1)).headObject(any(HeadObjectRequest.class));
+    }
+
+    @Test
+    void replace_withEmptyListRemovesAllImagesWithoutS3Lookup() {
+        String firstKey = "skin-images/1/first.jpg";
+        String secondKey = "skin-images/1/second.jpg";
+        DailyRecordImage first = DailyRecordImage.builder()
+                .dailyRecord(dailyRecord)
+                .objectKey(firstKey)
+                .mimeType("image/jpeg")
+                .fileSize(100L)
+                .sortOrder(1)
+                .build();
+        DailyRecordImage second = DailyRecordImage.builder()
+                .dailyRecord(dailyRecord)
+                .objectKey(secondKey)
+                .mimeType("image/png")
+                .fileSize(200L)
+                .sortOrder(2)
+                .build();
+        when(dailyRecordImageRepository
+                .findAllByDailyRecordOrderBySortOrderAsc(dailyRecord))
+                .thenReturn(List.of(first, second));
+
+        service.replace(dailyRecord, user, List.of());
+
+        verify(recordImageOwnershipService).replaceAttachments(
+                1L,
+                List.of(firstKey, secondKey),
+                List.of()
+        );
+        verify(dailyRecordImageRepository).deleteAll(List.of(first, second));
+        verify(dailyRecordImageRepository).saveAllAndFlush(List.of());
+        verify(s3Client, never()).headObject(any(HeadObjectRequest.class));
+    }
+
+    @Test
+    void replace_rejectsNullImageKeysAtPublicBoundary() {
+        NullPointerException exception = assertThrows(
+                NullPointerException.class,
+                () -> service.replace(dailyRecord, user, null)
+        );
+
+        assertEquals("imageKeys", exception.getMessage());
+        verify(dailyRecordImageRepository, never())
+                .findAllByDailyRecordOrderBySortOrderAsc(any());
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})

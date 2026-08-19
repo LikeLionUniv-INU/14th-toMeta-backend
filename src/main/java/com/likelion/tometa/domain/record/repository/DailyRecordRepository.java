@@ -3,9 +3,11 @@ package com.likelion.tometa.domain.record.repository;
 import com.likelion.tometa.domain.record.entity.DailyRecord;
 import com.likelion.tometa.domain.user.entity.User;
 import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
@@ -17,6 +19,7 @@ public interface DailyRecordRepository extends JpaRepository<DailyRecord, Long> 
     Optional<DailyRecord> findByUserAndRecordDate(User user, LocalDate recordDate);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "3000"))
     @Query("""
             select record
             from DailyRecord record

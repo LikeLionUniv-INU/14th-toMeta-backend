@@ -60,4 +60,8 @@ public class DailyRecordImage extends BaseCreatedEntity {
         this.fileSize = fileSize;
         this.sortOrder = sortOrder;
     }
+
+    public void updateSortOrder(int sortOrder) {
+        this.sortOrder = sortOrder;
+    }
 }

@@ -55,7 +55,7 @@ public class DailyRecordController {
     @PatchMapping("/{date}")
     public ResponseEntity<ApiResponse<DailyRecordUpdateResponseDto>> updateDailyRecord(
             @PathVariable("date") LocalDate date,
-            @RequestBody DailyRecordUpdateRequestDto request,
+            @Valid @RequestBody DailyRecordUpdateRequestDto request,
             @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false)
             String sessionToken
     ) {

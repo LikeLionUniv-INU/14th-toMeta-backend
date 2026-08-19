@@ -92,7 +92,12 @@ public class DailyReport extends BaseTimeEntity {
         this.aiAnalysis = aiAnalysis;
         this.personalizedSolution = personalizedSolution;
         this.reportStatus = "completed";
-        this.generatedAt = LocalDateTime.now();
+        LocalDateTime completedAt = LocalDateTime.now();
+        if (this.generatedAt == null) {
+            this.generatedAt = completedAt;
+        } else {
+            this.regeneratedAt = completedAt;
+        }
     }
 
     public void regenerate(
@@ -119,7 +124,6 @@ public class DailyReport extends BaseTimeEntity {
         this.aiSummary = null;
         this.aiAnalysis = null;
         this.personalizedSolution = null;
-        this.generatedAt = null;
         this.regeneratedAt = null;
     }
 }

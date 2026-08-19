@@ -94,8 +94,7 @@ public class RecordImageObject extends BaseTimeEntity {
     }
 
     public void markPending() {
-        this.status = RecordImageObjectStatus.PENDING;
-        clearCleanupClaim();
+        transitionToPending();
     }
 
     public void claimCleanup(String claimToken, Instant claimedAt) {
@@ -105,8 +104,7 @@ public class RecordImageObject extends BaseTimeEntity {
     }
 
     public void releaseCleanupClaim() {
-        this.status = RecordImageObjectStatus.PENDING;
-        clearCleanupClaim();
+        transitionToPending();
     }
 
     public void markDeleted() {
@@ -128,5 +126,10 @@ public class RecordImageObject extends BaseTimeEntity {
     private void clearCleanupClaim() {
         this.cleanupClaimToken = null;
         this.cleanupClaimedAt = null;
+    }
+
+    private void transitionToPending() {
+        this.status = RecordImageObjectStatus.PENDING;
+        clearCleanupClaim();
     }
 }

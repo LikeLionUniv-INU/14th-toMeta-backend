@@ -23,6 +23,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.time.LocalDate;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -256,16 +259,16 @@ class DailyRecordControllerTest {
         verify(dailyRecordService).update(eq(date), captor.capture(), eq("session-token"));
         DailyRecordUpdateRequestDto request = captor.getValue();
         assertTrue(request.hasMemo());
-        org.junit.jupiter.api.Assertions.assertNull(request.memo());
+        assertNull(request.memo());
         assertTrue(request.hasImageKeys());
-        org.junit.jupiter.api.Assertions.assertEquals(List.of(), request.imageKeys());
+        assertEquals(List.of(), request.imageKeys());
         assertTrue(request.hasMorningCosmeticSetIds());
-        org.junit.jupiter.api.Assertions.assertEquals(
+        assertEquals(
                 List.of(3L),
                 request.morningCosmeticSetIds()
         );
-        org.junit.jupiter.api.Assertions.assertFalse(request.hasFoodMemo());
-        org.junit.jupiter.api.Assertions.assertFalse(request.hasNightCosmeticIds());
+        assertFalse(request.hasFoodMemo());
+        assertFalse(request.hasNightCosmeticIds());
     }
 
     @Test

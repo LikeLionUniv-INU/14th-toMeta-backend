@@ -1,5 +1,6 @@
 package com.likelion.tometa.domain.report.repository;
 
+import com.likelion.tometa.domain.health.entity.DailyHealthSummary;
 import com.likelion.tometa.domain.record.entity.DailyRecord;
 import com.likelion.tometa.domain.report.entity.DailyReport;
 import com.likelion.tometa.domain.user.entity.User;
@@ -41,7 +42,14 @@ public interface DailyReportRepository extends JpaRepository<DailyReport, Long> 
                    report.aiAnalysis = :aiAnalysis,
                    report.personalizedSolution = :personalizedSolution,
                    report.reportStatus = 'completed',
-                   report.regeneratedAt = :completedAt
+                   report.generatedAt = case
+                       when report.generatedAt is null then :completedAt
+                       else report.generatedAt
+                   end,
+                   report.regeneratedAt = case
+                       when report.generatedAt is null then null
+                       else :completedAt
+                   end
              where report.id = :reportId
                and report.generationVersion = :generationVersion
                and report.reportStatus = 'generating'
@@ -49,7 +57,7 @@ public interface DailyReportRepository extends JpaRepository<DailyReport, Long> 
     int completeGenerationIfCurrent(
             @Param("reportId") Long reportId,
             @Param("generationVersion") long generationVersion,
-            @Param("dailyHealthSummary") com.likelion.tometa.domain.health.entity.DailyHealthSummary dailyHealthSummary,
+            @Param("dailyHealthSummary") DailyHealthSummary dailyHealthSummary,
             @Param("aiSummary") String aiSummary,
             @Param("aiAnalysis") String aiAnalysis,
             @Param("personalizedSolution") String personalizedSolution,

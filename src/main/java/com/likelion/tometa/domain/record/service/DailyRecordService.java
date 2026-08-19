@@ -14,6 +14,8 @@ import com.likelion.tometa.domain.cosmetic.repository.CosmeticTagRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
 import com.likelion.tometa.domain.cosmetic.service.CosmeticSetTagSelector;
 import com.likelion.tometa.domain.record.code.RecordErrorCode;
+import com.likelion.tometa.domain.record.constant.DailyRecordPolicy;
+import com.likelion.tometa.domain.record.constant.RecordImagePolicy;
 import com.likelion.tometa.domain.record.dto.request.DailyRecordCreateRequestDto;
 import com.likelion.tometa.domain.record.dto.request.DailyRecordUpdateRequestDto;
 import com.likelion.tometa.domain.record.dto.response.DailyRecordCreateResponseDto;
@@ -57,9 +59,12 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -196,8 +201,8 @@ public class DailyRecordService {
         UpdateValues values = mergeAndValidateUpdate(dailyRecord, request, existing);
 
         boolean scalarChanged = !dailyRecord.getSkinStatus().equals(values.skinStatus())
-                || !java.util.Objects.equals(dailyRecord.getFoodMemo(), values.foodMemo())
-                || !java.util.Objects.equals(dailyRecord.getMemo(), values.memo());
+                || !Objects.equals(dailyRecord.getFoodMemo(), values.foodMemo())
+                || !Objects.equals(dailyRecord.getMemo(), values.memo());
         boolean selectionChanged = values.morningCosmeticIdsChanged()
                 || values.morningCosmeticSetIdsChanged()
                 || values.nightCosmeticIdsChanged()
@@ -236,7 +241,7 @@ public class DailyRecordService {
         List<DailyRecordCosmeticSetItem> setItems = dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(dailyRecord);
         List<DailyRecordCosmetic> cosmetics = dailyRecordCosmeticRepository
-                .findAllByDailyRecord(dailyRecord);
+                .findAllByDailyRecordOrderBySortOrderAsc(dailyRecord);
         List<DailyRecordImage> images = dailyRecordImageRepository
                 .findAllByDailyRecordOrderBySortOrderAsc(dailyRecord);
         return new ExistingRecordState(
@@ -310,8 +315,8 @@ public class DailyRecordService {
                 ? request.foodMemo()
                 : dailyRecord.getFoodMemo();
         String memo = request.hasMemo() ? request.memo() : dailyRecord.getMemo();
-        if ((foodMemo != null && foodMemo.length() > 300)
-                || (memo != null && memo.length() > 300)
+        if ((foodMemo != null && foodMemo.length() > DailyRecordPolicy.MAX_MEMO_LENGTH)
+                || (memo != null && memo.length() > DailyRecordPolicy.MAX_MEMO_LENGTH)
                 || (skinStatus.requiresMemo() && (memo == null || memo.isBlank()))) {
             throw new GeneralException(GlobalErrorCode.BAD_REQUEST);
         }
@@ -329,10 +334,16 @@ public class DailyRecordService {
                 foodMemo,
                 imageKeys,
                 memo,
-                request.hasMorningCosmeticIds(),
-                request.hasMorningCosmeticSetIds(),
-                request.hasNightCosmeticIds(),
+                request.hasMorningCosmeticIds()
+                        && !morningCosmetics.equals(
+                                existingMorningCosmetics.stream().sorted().toList()),
+                request.hasMorningCosmeticSetIds()
+                        && !morningSets.equals(existingMorningSets.stream().sorted().toList()),
+                request.hasNightCosmeticIds()
+                        && !nightCosmetics.equals(
+                                existingNightCosmetics.stream().sorted().toList()),
                 request.hasNightCosmeticSetIds()
+                        && !nightSets.equals(existingNightSets.stream().sorted().toList())
         );
     }
 
@@ -342,7 +353,7 @@ public class DailyRecordService {
     }
 
     private List<String> validatedImageKeys(List<String> imageKeys) {
-        if (imageKeys.size() > com.likelion.tometa.domain.record.constant.RecordImagePolicy.MAX_IMAGE_COUNT
+        if (imageKeys.size() > RecordImagePolicy.MAX_IMAGE_COUNT
                 || imageKeys.stream().anyMatch(key -> key == null || key.isBlank())
                 || new HashSet<>(imageKeys).size() != imageKeys.size()) {
             throw new GeneralException(GlobalErrorCode.BAD_REQUEST);
@@ -597,7 +608,7 @@ public class DailyRecordService {
             List<SetChoice> morningSets,
             List<SetChoice> nightSets
     ) {
-        List<SetChoice> choices = java.util.stream.Stream.concat(
+        List<SetChoice> choices = Stream.concat(
                 morningSets.stream(),
                 nightSets.stream()
         ).toList();
@@ -624,7 +635,7 @@ public class DailyRecordService {
                 ));
 
         List<DailyRecordCosmeticSetItem> items = choices.stream()
-                .flatMap(choice -> java.util.stream.IntStream
+                .flatMap(choice -> IntStream
                         .range(0, choice.members().size())
                         .mapToObj(index -> DailyRecordCosmeticSetItem.builder()
                                 .dailyRecordCosmeticSet(savedByKey.get(setKey(
@@ -657,7 +668,7 @@ public class DailyRecordService {
             DailyRecord dailyRecord,
             List<SetChoice> choices
     ) {
-        return java.util.stream.IntStream.range(0, choices.size())
+        return IntStream.range(0, choices.size())
                 .mapToObj(index -> {
                     SetChoice choice = choices.get(index);
                     return DailyRecordSelection.builder()
@@ -677,7 +688,7 @@ public class DailyRecordService {
             DailyRecord dailyRecord,
             List<DirectChoice> choices
     ) {
-        return java.util.stream.IntStream.range(0, choices.size())
+        return IntStream.range(0, choices.size())
                 .mapToObj(index -> {
                     DirectChoice choice = choices.get(index);
                     return DailyRecordSelection.builder()
@@ -1019,7 +1030,7 @@ public class DailyRecordService {
             PeriodSelection night,
             SelectionResources resources
     ) {
-        Set<Long> directProductIds = java.util.stream.Stream.concat(
+        Set<Long> directProductIds = Stream.concat(
                         morning.directCosmetics().stream(),
                         night.directCosmetics().stream()
                 )
@@ -1185,11 +1196,11 @@ public class DailyRecordService {
                                 snapshot.getSourceCosmeticSetId()),
                         Function.identity()
                 ));
-        List<DailyRecordCosmeticSetItem> itemSnapshots = java.util.stream.Stream.concat(
+        List<DailyRecordCosmeticSetItem> itemSnapshots = Stream.concat(
                         morning.sets().stream().map(set -> Map.entry(morning.period(), set)),
                         night.sets().stream().map(set -> Map.entry(night.period(), set))
                 )
-                .flatMap(entry -> java.util.stream.IntStream.range(
+                .flatMap(entry -> IntStream.range(
                                 0,
                                 resources.cosmeticsBySetId()
                                         .getOrDefault(entry.getValue().getId(), List.of())
@@ -1216,7 +1227,7 @@ public class DailyRecordService {
             DailyRecord dailyRecord,
             PeriodSelection selection
     ) {
-        return java.util.stream.IntStream.range(0, selection.sets().size())
+        return IntStream.range(0, selection.sets().size())
                 .mapToObj(index -> {
                     CosmeticSet set = selection.sets().get(index);
                     return DailyRecordCosmeticSet.builder()
@@ -1236,7 +1247,7 @@ public class DailyRecordService {
             PeriodSelection morning,
             PeriodSelection night
     ) {
-        Set<Long> productIds = java.util.stream.Stream.concat(
+        Set<Long> productIds = Stream.concat(
                         morning.cosmetics().stream(),
                         night.cosmetics().stream()
                 )
@@ -1256,7 +1267,7 @@ public class DailyRecordService {
             PeriodSelection selection,
             Map<Long, List<IngredientSnapshot>> ingredientsByProductId
     ) {
-        return java.util.stream.IntStream.range(0, selection.cosmetics().size())
+        return IntStream.range(0, selection.cosmetics().size())
                 .mapToObj(index -> {
                     UserCosmetic userCosmetic = selection.cosmetics().get(index);
                     CosmeticProduct product = userCosmetic.getCosmeticProduct();

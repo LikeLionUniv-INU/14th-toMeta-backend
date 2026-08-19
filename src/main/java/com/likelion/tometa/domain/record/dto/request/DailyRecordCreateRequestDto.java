@@ -1,6 +1,7 @@
 package com.likelion.tometa.domain.record.dto.request;
 
 import com.likelion.tometa.domain.record.constant.RecordImagePolicy;
+import com.likelion.tometa.domain.record.constant.DailyRecordPolicy;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -30,14 +31,16 @@ public record DailyRecordCreateRequestDto(
         List<@NotNull(message = "화장품 세트 ID는 null일 수 없습니다.")
                 @Positive(message = "화장품 세트 ID는 양수여야 합니다.") Long> nightCosmeticSetIds,
 
-        @Size(max = 300, message = "음식 메모는 300자 이하여야 합니다.")
+        @Size(max = DailyRecordPolicy.MAX_MEMO_LENGTH,
+                message = "음식 메모는 300자 이하여야 합니다.")
         String foodMemo,
 
         @Size(max = RecordImagePolicy.MAX_IMAGE_COUNT,
                 message = "피부 사진은 최대 5장까지 등록할 수 있습니다.")
         List<@NotBlank(message = "이미지 키는 비어 있을 수 없습니다.") String> imageKeys,
 
-        @Size(max = 300, message = "특이사항은 300자 이하여야 합니다.")
+        @Size(max = DailyRecordPolicy.MAX_MEMO_LENGTH,
+                message = "특이사항은 300자 이하여야 합니다.")
         String memo
 ) {
     public DailyRecordCreateRequestDto {

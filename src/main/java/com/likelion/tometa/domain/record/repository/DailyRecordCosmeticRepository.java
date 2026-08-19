@@ -8,5 +8,7 @@ import java.util.List;
 
 public interface DailyRecordCosmeticRepository extends JpaRepository<DailyRecordCosmetic, Long> {
 
-    List<DailyRecordCosmetic> findAllByDailyRecord(DailyRecord dailyRecord);
+    List<DailyRecordCosmetic> findAllByDailyRecordOrderBySortOrderAsc(
+            DailyRecord dailyRecord
+    );
 }

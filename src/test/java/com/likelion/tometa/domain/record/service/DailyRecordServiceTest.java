@@ -547,7 +547,8 @@ class DailyRecordServiceTest {
         ReflectionTestUtils.setField(report, "aiSummary", "old summary");
         ReflectionTestUtils.setField(report, "aiAnalysis", "old analysis");
         ReflectionTestUtils.setField(report, "personalizedSolution", "old solution");
-        ReflectionTestUtils.setField(report, "generatedAt", LocalDateTime.now());
+        LocalDateTime generatedAt = LocalDateTime.of(2026, 8, 13, 7, 0);
+        ReflectionTestUtils.setField(report, "generatedAt", generatedAt);
         ReflectionTestUtils.setField(report, "regeneratedAt", LocalDateTime.now());
 
         when(dailyRecordRepository.findByUserAndRecordDateForUpdate(user, date))
@@ -559,7 +560,7 @@ class DailyRecordServiceTest {
         when(dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
                 .thenReturn(List.of());
-        when(dailyRecordCosmeticRepository.findAllByDailyRecord(record))
+        when(dailyRecordCosmeticRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of(cosmeticSnapshot));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of());
@@ -582,7 +583,7 @@ class DailyRecordServiceTest {
         assertNull(report.getAiSummary());
         assertNull(report.getAiAnalysis());
         assertNull(report.getPersonalizedSolution());
-        assertNull(report.getGeneratedAt());
+        assertEquals(generatedAt, report.getGeneratedAt());
         assertNull(report.getRegeneratedAt());
         assertEquals("keep this note", report.getNote());
         verify(dailyRecordSelectionRepository, never()).deleteAll(any());
@@ -612,18 +613,20 @@ class DailyRecordServiceTest {
         when(dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
                 .thenReturn(List.of());
-        when(dailyRecordCosmeticRepository.findAllByDailyRecord(record))
+        when(dailyRecordCosmeticRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of());
 
         DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
         request.setMemo("  same memo  ");
+        request.setMorningCosmeticIds(List.of(12L));
 
         dailyRecordService.update(date, request, SESSION_TOKEN);
 
         verify(dailyReportRepository, never()).findByDailyRecord(any());
         verify(dailyReportRepository, never()).save(any());
+        verify(dailyRecordSelectionRepository, never()).deleteAll(any());
     }
 
     @Test
@@ -642,7 +645,7 @@ class DailyRecordServiceTest {
                         List.of(),
                         1
                 )));
-        when(dailyRecordCosmeticRepository.findAllByDailyRecord(record))
+        when(dailyRecordCosmeticRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
 
         DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
@@ -654,6 +657,108 @@ class DailyRecordServiceTest {
         );
 
         assertSame(GlobalErrorCode.BAD_REQUEST, exception.getErrorCode());
+    }
+
+    @Test
+    void update_replacesChangedImageListInRequestedOrderAndInvalidatesReport() {
+        LocalDate date = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        UserCosmetic cosmetic = userCosmetic(12L);
+        DailyRecord record = dailyRecord(date, "normal", null, null);
+        DailyRecordSelection selection = selection(
+                record,
+                DailyRecordSelectionType.COSMETIC,
+                12L,
+                "product-12",
+                List.of(),
+                1
+        );
+        DailyRecordImage existingImage = DailyRecordImage.builder()
+                .dailyRecord(record)
+                .objectKey("skin-images/1/old.jpg")
+                .mimeType("image/jpeg")
+                .fileSize(100L)
+                .sortOrder(1)
+                .build();
+        DailyReport report = DailyReport.builder().dailyRecord(record).build();
+
+        when(dailyRecordRepository.findByUserAndRecordDateForUpdate(user, date))
+                .thenReturn(Optional.of(record));
+        when(dailyRecordSelectionRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(selection));
+        when(dailyRecordCosmeticSetRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticSetItemRepository
+                .findAllByDailyRecordCosmeticSet_DailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticRepository
+                .findAllByDailyRecordOrderBySortOrderAsc(record))
+                .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
+        when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+                .thenReturn(List.of(existingImage));
+        when(dailyReportRepository.findByDailyRecord(record))
+                .thenReturn(Optional.of(report));
+
+        List<String> requestedKeys = List.of(
+                "skin-images/1/second.jpg",
+                "skin-images/1/first.jpg"
+        );
+        DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
+        request.setImageKeys(requestedKeys);
+
+        dailyRecordService.update(date, request, SESSION_TOKEN);
+
+        verify(imageAttachmentService).replace(record, user, requestedKeys);
+        assertEquals(1L, report.getGenerationVersion());
+        assertEquals("collecting", report.getReportStatus());
+    }
+
+    @Test
+    void update_withEmptyImageListClearsAllImagesAndInvalidatesReport() {
+        LocalDate date = LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1);
+        UserCosmetic cosmetic = userCosmetic(12L);
+        DailyRecord record = dailyRecord(date, "normal", null, null);
+        DailyRecordSelection selection = selection(
+                record,
+                DailyRecordSelectionType.COSMETIC,
+                12L,
+                "product-12",
+                List.of(),
+                1
+        );
+        DailyRecordImage existingImage = DailyRecordImage.builder()
+                .dailyRecord(record)
+                .objectKey("skin-images/1/old.jpg")
+                .mimeType("image/jpeg")
+                .fileSize(100L)
+                .sortOrder(1)
+                .build();
+        DailyReport report = DailyReport.builder().dailyRecord(record).build();
+
+        when(dailyRecordRepository.findByUserAndRecordDateForUpdate(user, date))
+                .thenReturn(Optional.of(record));
+        when(dailyRecordSelectionRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of(selection));
+        when(dailyRecordCosmeticSetRepository.findAllByDailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticSetItemRepository
+                .findAllByDailyRecordCosmeticSet_DailyRecord(record))
+                .thenReturn(List.of());
+        when(dailyRecordCosmeticRepository
+                .findAllByDailyRecordOrderBySortOrderAsc(record))
+                .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
+        when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
+                .thenReturn(List.of(existingImage));
+        when(dailyReportRepository.findByDailyRecord(record))
+                .thenReturn(Optional.of(report));
+
+        DailyRecordUpdateRequestDto request = new DailyRecordUpdateRequestDto();
+        request.setImageKeys(List.of());
+
+        dailyRecordService.update(date, request, SESSION_TOKEN);
+
+        verify(imageAttachmentService).replace(record, user, List.of());
+        assertEquals(1L, report.getGenerationVersion());
+        assertEquals("collecting", report.getReportStatus());
     }
 
     @Test
@@ -687,7 +792,7 @@ class DailyRecordServiceTest {
         when(dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
                 .thenReturn(List.of());
-        when(dailyRecordCosmeticRepository.findAllByDailyRecord(record))
+        when(dailyRecordCosmeticRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of(oldSnapshot));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of());
@@ -782,7 +887,7 @@ class DailyRecordServiceTest {
         when(dailyRecordCosmeticSetItemRepository
                 .findAllByDailyRecordCosmeticSet_DailyRecord(record))
                 .thenReturn(List.of(setItemSnapshot));
-        when(dailyRecordCosmeticRepository.findAllByDailyRecord(record))
+        when(dailyRecordCosmeticRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of(memberSnapshot, directSnapshot));
         when(dailyRecordImageRepository.findAllByDailyRecordOrderBySortOrderAsc(record))
                 .thenReturn(List.of());

@@ -14,7 +14,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 @DataJpaTest(properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
@@ -44,14 +43,39 @@ class DailyReportRepositoryIntegrationTest {
                 .dailyRecord(record)
                 .build());
 
-        report.invalidateForRegeneration();
+        assertEquals(1, dailyReportRepository.markGeneratingIfCurrent(
+                report.getId(),
+                0L
+        ));
+        assertEquals(0, dailyReportRepository.markGeneratingIfCurrent(
+                report.getId(),
+                0L
+        ));
+        assertEquals(0, dailyReportRepository.markGeneratingIfCurrent(
+                report.getId(),
+                1L
+        ));
+        LocalDateTime initiallyCompletedAt = LocalDateTime.of(2026, 8, 13, 7, 0);
+        assertEquals(1, dailyReportRepository.completeGenerationIfCurrent(
+                report.getId(),
+                0L,
+                null,
+                "initial summary",
+                "initial analysis",
+                "initial solution",
+                initiallyCompletedAt
+        ));
+
+        DailyReport latest = dailyReportRepository.findById(report.getId()).orElseThrow();
+        latest.invalidateForRegeneration();
         dailyReportRepository.flush();
+        assertEquals(initiallyCompletedAt, latest.getGeneratedAt());
         assertEquals(1, dailyReportRepository.markGeneratingIfCurrent(
                 report.getId(),
                 1L
         ));
 
-        DailyReport latest = dailyReportRepository.findById(report.getId()).orElseThrow();
+        latest = dailyReportRepository.findById(report.getId()).orElseThrow();
         latest.invalidateForRegeneration();
         dailyReportRepository.flush();
         assertEquals(0, dailyReportRepository.completeGenerationIfCurrent(
@@ -88,7 +112,7 @@ class DailyReportRepositoryIntegrationTest {
         assertEquals("latest summary", completed.getAiSummary());
         assertEquals("latest analysis", completed.getAiAnalysis());
         assertEquals("latest solution", completed.getPersonalizedSolution());
+        assertEquals(initiallyCompletedAt, completed.getGeneratedAt());
         assertEquals(completedAt, completed.getRegeneratedAt());
-        assertNull(completed.getGeneratedAt());
     }
 }
