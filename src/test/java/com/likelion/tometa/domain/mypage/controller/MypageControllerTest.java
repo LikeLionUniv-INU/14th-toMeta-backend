@@ -2,6 +2,7 @@ package com.likelion.tometa.domain.mypage.controller;
 
 import com.likelion.tometa.domain.mypage.dto.request.NotificationSettingsUpdateRequestDto;
 import com.likelion.tometa.domain.mypage.dto.response.MypageResponseDto;
+import com.likelion.tometa.domain.mypage.dto.response.UserProfileResponseDto;
 import com.likelion.tometa.domain.mypage.service.MypageService;
 import com.likelion.tometa.domain.user.code.UserErrorCode;
 import com.likelion.tometa.global.exception.GeneralException;
@@ -125,6 +126,84 @@ class MypageControllerTest {
                 .getMypage(null);
 
         mockMvc.perform(get("/api/users/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "USER_4011",
+                          "message": "유효하지 않거나 만료된 사용자 세션입니다.",
+                          "result": null
+                        }
+                        """));
+    }
+
+    @Test
+    void getUserProfile_returnsCurrentProfile() throws Exception {
+        UserProfileResponseDto response = new UserProfileResponseDto(
+                "김도영",
+                "male",
+                "20s",
+                "dry"
+        );
+        when(mypageService.getUserProfile("session-token")).thenReturn(response);
+
+        mockMvc.perform(get("/api/users/me/profile")
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": true,
+                          "code": "COMMON_200",
+                          "message": "요청에 성공했습니다.",
+                          "result": {
+                            "nickname": "김도영",
+                            "gender": "male",
+                            "ageGroup": "20s",
+                            "skinType": "dry"
+                          }
+                        }
+                        """));
+
+        verify(mypageService).getUserProfile("session-token");
+    }
+
+    @Test
+    void getUserProfile_returnsNullFieldsBeforeProfileRegistration() throws Exception {
+        UserProfileResponseDto response = new UserProfileResponseDto(
+                null,
+                null,
+                null,
+                null
+        );
+        when(mypageService.getUserProfile("session-token")).thenReturn(response);
+
+        mockMvc.perform(get("/api/users/me/profile")
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": true,
+                          "code": "COMMON_200",
+                          "message": "요청에 성공했습니다.",
+                          "result": {
+                            "nickname": null,
+                            "gender": null,
+                            "ageGroup": null,
+                            "skinType": null
+                          }
+                        }
+                        """));
+
+        verify(mypageService).getUserProfile("session-token");
+    }
+
+    @Test
+    void getUserProfile_returnsUnauthorizedForMissingSession() throws Exception {
+        doThrow(new GeneralException(UserErrorCode.INVALID_ANONYMOUS_SESSION))
+                .when(mypageService)
+                .getUserProfile(null);
+
+        mockMvc.perform(get("/api/users/me/profile"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().json("""
                         {

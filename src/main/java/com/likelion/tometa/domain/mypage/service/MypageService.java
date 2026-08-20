@@ -3,6 +3,7 @@ package com.likelion.tometa.domain.mypage.service;
 import com.likelion.tometa.domain.health.repository.HealthConnectionRepository;
 import com.likelion.tometa.domain.mypage.dto.request.NotificationSettingsUpdateRequestDto;
 import com.likelion.tometa.domain.mypage.dto.response.MypageResponseDto;
+import com.likelion.tometa.domain.mypage.dto.response.UserProfileResponseDto;
 import com.likelion.tometa.domain.user.code.UserErrorCode;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.entity.UserNotificationSetting;
@@ -54,6 +55,18 @@ public class MypageService {
                 healthConnectLinked,
                 pushConnected,
                 notificationSettings
+        );
+    }
+
+    @Transactional
+    public UserProfileResponseDto getUserProfile(String sessionToken) {
+        User user = sessionUserResolver.resolve(sessionToken);
+
+        return new UserProfileResponseDto(
+                user.getNickname(),
+                user.getGender(),
+                user.getAgeGroup(),
+                user.getSkinType()
         );
     }
 

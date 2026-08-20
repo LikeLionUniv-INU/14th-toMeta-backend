@@ -2,6 +2,7 @@ package com.likelion.tometa.domain.mypage.controller;
 
 import com.likelion.tometa.domain.mypage.dto.request.NotificationSettingsUpdateRequestDto;
 import com.likelion.tometa.domain.mypage.dto.response.MypageResponseDto;
+import com.likelion.tometa.domain.mypage.dto.response.UserProfileResponseDto;
 import com.likelion.tometa.domain.mypage.service.MypageService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
 import com.likelion.tometa.global.response.ApiResponse;
@@ -29,6 +30,18 @@ public class MypageController {
             ) String sessionToken
     ) {
         MypageResponseDto result = mypageService.getMypage(sessionToken);
+
+        return ResponseEntity.ok(ApiResponse.success(result));
+    }
+
+    @GetMapping("/me/profile")
+    public ResponseEntity<ApiResponse<UserProfileResponseDto>> getUserProfile(
+            @CookieValue(
+                    name = AnonymousSessionCookieProvider.COOKIE_NAME,
+                    required = false
+            ) String sessionToken
+    ) {
+        UserProfileResponseDto result = mypageService.getUserProfile(sessionToken);
 
         return ResponseEntity.ok(ApiResponse.success(result));
     }
