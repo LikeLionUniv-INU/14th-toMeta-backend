@@ -2,6 +2,8 @@ package com.likelion.tometa.domain.report.service;
 
 import com.likelion.tometa.domain.health.entity.DailyHealthSummary;
 import com.likelion.tometa.domain.health.repository.DailyHealthSummaryRepository;
+import com.likelion.tometa.domain.record.entity.DailyRecord;
+import com.likelion.tometa.domain.record.repository.DailyRecordRepository;
 import com.likelion.tometa.domain.report.code.ReportErrorCode;
 import com.likelion.tometa.domain.report.dto.response.WeeklyReportGenerationResponseDto;
 import com.likelion.tometa.domain.report.entity.DailyReport;
@@ -14,7 +16,6 @@ import com.likelion.tometa.domain.report.support.WeeklyReportAiResult;
 import com.likelion.tometa.domain.report.support.WeeklyReportGenerationContext;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.repository.UserRepository;
-import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
 import com.likelion.tometa.global.code.GlobalErrorCode;
 import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
@@ -45,8 +46,8 @@ public class WeeklyReportGenerationTransactionService {
     private static final String FEMALE = "female";
     private static final String MALE = "male";
 
-    private final AnonymousSessionUserResolver sessionUserResolver;
     private final UserRepository userRepository;
+    private final DailyRecordRepository dailyRecordRepository;
     private final DailyReportRepository dailyReportRepository;
     private final DailyHealthSummaryRepository dailyHealthSummaryRepository;
     private final WeeklyReportRepository weeklyReportRepository;
@@ -54,14 +55,12 @@ public class WeeklyReportGenerationTransactionService {
 
     @Transactional
     public Preparation prepare(
-            LocalDate startDate,
-            String sessionToken
+            User requestedUser,
+            LocalDate startDate
     ) {
         validateStartDate(startDate);
 
-        User resolvedUser = sessionUserResolver.resolve(sessionToken);
-
-        User user = userRepository.findWithLockById(resolvedUser.getId())
+        User user = userRepository.findWithLockById(requestedUser.getId())
                 .orElseThrow(() -> new GeneralException(
                         GlobalErrorCode.INTERNAL_SERVER_ERROR
                 ));
@@ -97,6 +96,19 @@ public class WeeklyReportGenerationTransactionService {
             weeklyReport.markCollecting();
         }
 
+        List<DailyRecord> dailyRecords = dailyRecordRepository
+                .findAllByUserAndRecordDateBetween(
+                        user,
+                        startDate,
+                        endDate
+                );
+
+        if (dailyRecords.isEmpty()) {
+            throw new GeneralException(
+                    ReportErrorCode.WEEKLY_REPORT_SOURCE_NOT_FOUND
+            );
+        }
+
         List<DailyReport> dailyReports =
                 dailyReportRepository
                         .findAllByDailyRecord_UserAndDailyRecord_RecordDateBetweenAndReportStatusOrderByDailyRecord_RecordDateAsc(
@@ -105,12 +117,6 @@ public class WeeklyReportGenerationTransactionService {
                                 endDate,
                                 COMPLETED
                         );
-
-        if (dailyReports.isEmpty()) {
-            throw new GeneralException(
-                    ReportErrorCode.WEEKLY_REPORT_SOURCE_NOT_FOUND
-            );
-        }
 
         List<DailyHealthSummary> healthSummaries =
                 dailyHealthSummaryRepository
@@ -129,6 +135,7 @@ public class WeeklyReportGenerationTransactionService {
                         user,
                         startDate,
                         endDate,
+                        dailyRecords,
                         dailyReports,
                         healthSummaries
                 )
@@ -204,9 +211,17 @@ public class WeeklyReportGenerationTransactionService {
             User user,
             LocalDate startDate,
             LocalDate endDate,
+            List<DailyRecord> dailyRecords,
             List<DailyReport> dailyReports,
             List<DailyHealthSummary> healthSummaries
     ) {
+        Map<LocalDate, DailyRecord> recordByDate =
+                dailyRecords.stream()
+                        .collect(Collectors.toMap(
+                                DailyRecord::getRecordDate,
+                                Function.identity()
+                        ));
+
         Map<LocalDate, DailyReport> reportByDate =
                 dailyReports.stream()
                         .collect(Collectors.toMap(
@@ -231,6 +246,7 @@ public class WeeklyReportGenerationTransactionService {
                             return toDay(
                                     user,
                                     date,
+                                    recordByDate.get(date),
                                     reportByDate.get(date),
                                     healthByDate.get(date)
                             );
@@ -248,10 +264,11 @@ public class WeeklyReportGenerationTransactionService {
     private WeeklyReportGenerationContext.Day toDay(
             User user,
             LocalDate date,
+            DailyRecord dailyRecord,
             DailyReport report,
             DailyHealthSummary healthSummary
     ) {
-        if (report == null) {
+        if (dailyRecord == null) {
             return new WeeklyReportGenerationContext.Day(
                     date,
                     false,
@@ -267,11 +284,11 @@ public class WeeklyReportGenerationTransactionService {
         return new WeeklyReportGenerationContext.Day(
                 date,
                 true,
-                report.getDailyRecord().getSkinStatus(),
-                report.getDailyRecord().getFoodMemo(),
-                report.getDailyRecord().getMemo(),
-                report.getAiSummary(),
-                report.getAiAnalysis(),
+                dailyRecord.getSkinStatus(),
+                dailyRecord.getFoodMemo(),
+                dailyRecord.getMemo(),
+                report == null ? null : report.getAiSummary(),
+                report == null ? null : report.getAiAnalysis(),
                 toHealthSummary(user, healthSummary)
         );
     }

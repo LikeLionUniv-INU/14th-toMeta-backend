@@ -13,6 +13,8 @@ import com.likelion.tometa.domain.report.service.MonthlyReportService;
 import com.likelion.tometa.domain.report.service.WeeklyReportGenerationService;
 import com.likelion.tometa.domain.report.service.WeeklyReportService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
+import com.likelion.tometa.domain.user.entity.User;
+import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
 import com.likelion.tometa.global.response.ApiResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,7 @@ public class ReportController {
     private final MonthlyReportService monthlyReportService;
     private final WeeklyReportService weeklyReportService;
     private final WeeklyReportGenerationService weeklyReportGenerationService;
+    private final AnonymousSessionUserResolver sessionUserResolver;
 
     @GetMapping
     public ResponseEntity<ApiResponse<MonthlyReportListResponseDto>> getMonthlyReports(
@@ -78,8 +81,9 @@ public class ReportController {
                     required = false
             ) String sessionToken
     ) {
+        User user = sessionUserResolver.resolve(sessionToken);
         return ResponseEntity.ok(ApiResponse.success(
-                dailyReportGenerationService.generate(date, sessionToken)
+                dailyReportGenerationService.generate(user, date).response()
         ));
     }
 
@@ -132,8 +136,9 @@ public class ReportController {
                     required = false
             ) String sessionToken
     ) {
+        User user = sessionUserResolver.resolve(sessionToken);
         return ResponseEntity.ok(ApiResponse.success(
-                weeklyReportGenerationService.generate(startDate, sessionToken)
+                weeklyReportGenerationService.generate(user, startDate).response()
         ));
     }
 }

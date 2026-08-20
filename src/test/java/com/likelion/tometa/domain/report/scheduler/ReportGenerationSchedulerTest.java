@@ -1,0 +1,148 @@
+package com.likelion.tometa.domain.report.scheduler;
+
+import com.likelion.tometa.domain.record.repository.DailyRecordRepository;
+import com.likelion.tometa.domain.report.repository.WeeklyReportRepository;
+import com.likelion.tometa.domain.report.service.DailyReportGenerationService;
+import com.likelion.tometa.domain.report.service.WeeklyReportGenerationService;
+import com.likelion.tometa.domain.report.service.WeeklyReportNotificationService;
+import com.likelion.tometa.domain.report.support.ReportGenerationResult;
+import com.likelion.tometa.domain.user.entity.User;
+import com.likelion.tometa.domain.user.repository.UserRepository;
+import com.likelion.tometa.domain.user.service.PushNotificationService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ReportGenerationSchedulerTest {
+
+    private static final Instant MONDAY_00_01_KST =
+            Instant.parse("2026-08-23T15:01:00Z");
+
+    @Mock
+    private DailyRecordRepository dailyRecordRepository;
+    @Mock
+    private WeeklyReportRepository weeklyReportRepository;
+    @Mock
+    private UserRepository userRepository;
+    @Mock
+    private DailyReportGenerationService dailyReportGenerationService;
+    @Mock
+    private WeeklyReportGenerationService weeklyReportGenerationService;
+    @Mock
+    private WeeklyReportNotificationService weeklyReportNotificationService;
+    @Mock
+    private PushNotificationService pushNotificationService;
+
+    private ReportGenerationScheduler scheduler;
+
+    @BeforeEach
+    void setUp() {
+        scheduler = new ReportGenerationScheduler(
+                dailyRecordRepository,
+                weeklyReportRepository,
+                userRepository,
+                dailyReportGenerationService,
+                weeklyReportGenerationService,
+                weeklyReportNotificationService,
+                pushNotificationService,
+                Clock.fixed(MONDAY_00_01_KST, ZoneOffset.UTC)
+        );
+    }
+
+    @Test
+    void dailyScheduler_generatesPreviousDayAndNotifiesOnlyNewReport() {
+        LocalDate reportDate = LocalDate.of(2026, 8, 23);
+        User user = User.builder().build();
+        when(dailyRecordRepository
+                .findDailyReportGenerationTargetUserIds(reportDate))
+                .thenReturn(List.of(1L));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(dailyReportGenerationService.generate(user, reportDate))
+                .thenReturn(ReportGenerationResult.generated(null));
+        when(pushNotificationService
+                .sendDailyReportNotification(1L, reportDate))
+                .thenReturn(1);
+
+        scheduler.generateDailyReports();
+
+        verify(dailyReportGenerationService).generate(user, reportDate);
+        verify(pushNotificationService)
+                .sendDailyReportNotification(1L, reportDate);
+    }
+
+    @Test
+    void dailyScheduler_doesNotNotifyAlreadyCompletedReport() {
+        LocalDate reportDate = LocalDate.of(2026, 8, 23);
+        User user = User.builder().build();
+        when(dailyRecordRepository
+                .findDailyReportGenerationTargetUserIds(reportDate))
+                .thenReturn(List.of(1L));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(dailyReportGenerationService.generate(user, reportDate))
+                .thenReturn(ReportGenerationResult.alreadyCompleted(null));
+
+        scheduler.generateDailyReports();
+
+        verify(pushNotificationService, never())
+                .sendDailyReportNotification(any(), any());
+    }
+
+    @Test
+    void weeklyScheduler_usesPreviousMondayThroughSunday() {
+        LocalDate weekStartDate = LocalDate.of(2026, 8, 17);
+        LocalDate weekEndDate = LocalDate.of(2026, 8, 23);
+        User user = User.builder().build();
+        when(weeklyReportRepository
+                .findWeeklyReportGenerationTargetUserIds(
+                        weekStartDate,
+                        weekEndDate
+                ))
+                .thenReturn(List.of(1L));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(weeklyReportGenerationService.generate(user, weekStartDate))
+                .thenReturn(ReportGenerationResult.generated(null));
+
+        scheduler.generateWeeklyReports();
+
+        verify(weeklyReportGenerationService)
+                .generate(user, weekStartDate);
+    }
+
+    @Test
+    void weeklyNotificationScheduler_deliversDueMondayNotifications() {
+        LocalDate weekStartDate = LocalDate.of(2026, 8, 17);
+        LocalDateTime now = LocalDateTime.of(2026, 8, 24, 0, 1);
+        when(weeklyReportRepository.findWeeklyNotificationTargetIds(
+                eq(weekStartDate),
+                eq(LocalTime.of(0, 1)),
+                eq(now.minusMinutes(5))
+        )).thenReturn(List.of(10L));
+        when(weeklyReportNotificationService.send(10L, now))
+                .thenReturn(new WeeklyReportNotificationService.NotificationResult(
+                        true,
+                        1
+                ));
+
+        scheduler.sendWeeklyReportNotifications();
+
+        verify(weeklyReportNotificationService).send(10L, now);
+    }
+}

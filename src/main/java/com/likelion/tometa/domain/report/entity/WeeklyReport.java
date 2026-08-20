@@ -62,6 +62,15 @@ public class WeeklyReport extends BaseTimeEntity {
     @Column(name = "generation_started_at")
     private LocalDateTime generationStartedAt;
 
+    @Column(name = "notification_status", nullable = false, length = 20)
+    private String notificationStatus;
+
+    @Column(name = "notification_started_at")
+    private LocalDateTime notificationStartedAt;
+
+    @Column(name = "notification_sent_at")
+    private LocalDateTime notificationSentAt;
+
     @Builder
     private WeeklyReport(
             User user,
@@ -75,6 +84,7 @@ public class WeeklyReport extends BaseTimeEntity {
         this.weeklySummary = "";
         this.personalizedSolution = "";
         this.generatedAt = LocalDateTime.now();
+        this.notificationStatus = "pending";
     }
 
     public void markGenerating() {

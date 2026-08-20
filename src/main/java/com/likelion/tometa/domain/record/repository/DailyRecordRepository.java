@@ -38,4 +38,20 @@ public interface DailyRecordRepository extends JpaRepository<DailyRecord, Long> 
             LocalDate startDate,
             LocalDate endDate
     );
+
+    @Query("""
+            select distinct dailyRecord.user.id
+            from DailyRecord dailyRecord
+            left join DailyReport dailyReport
+              on dailyReport.dailyRecord = dailyRecord
+            where dailyRecord.recordDate = :recordDate
+              and (
+                    dailyReport is null
+                    or dailyReport.reportStatus <> 'completed'
+              )
+            order by dailyRecord.user.id
+            """)
+    List<Long> findDailyReportGenerationTargetUserIds(
+            @Param("recordDate") LocalDate recordDate
+    );
 }

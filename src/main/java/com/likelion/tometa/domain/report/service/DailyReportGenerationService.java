@@ -3,6 +3,8 @@ package com.likelion.tometa.domain.report.service;
 import com.likelion.tometa.domain.report.client.OpenAiDailyReportClient;
 import com.likelion.tometa.domain.report.dto.response.DailyReportGenerationResponseDto;
 import com.likelion.tometa.domain.report.support.DailyReportAiResult;
+import com.likelion.tometa.domain.report.support.ReportGenerationResult;
+import com.likelion.tometa.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -15,15 +17,17 @@ public class DailyReportGenerationService {
     private final DailyReportGenerationTransactionService transactionService;
     private final OpenAiDailyReportClient openAiDailyReportClient;
 
-    public DailyReportGenerationResponseDto generate(
-            LocalDate date,
-            String sessionToken
+    public ReportGenerationResult<DailyReportGenerationResponseDto> generate(
+            User user,
+            LocalDate date
     ) {
         DailyReportGenerationTransactionService.Preparation preparation =
-                transactionService.prepare(date, sessionToken);
+                transactionService.prepare(user, date);
 
         if (!preparation.requiresGeneration()) {
-            return preparation.completedResponse();
+            return ReportGenerationResult.alreadyCompleted(
+                    preparation.completedResponse()
+            );
         }
 
         try {
@@ -32,11 +36,13 @@ public class DailyReportGenerationService {
                             preparation.context()
                     );
 
-            return transactionService.complete(
-                    preparation.reportId(),
-                    preparation.generationVersion(),
-                    preparation.healthSummaryId(),
-                    aiResult
+            return ReportGenerationResult.generated(
+                    transactionService.complete(
+                            preparation.reportId(),
+                            preparation.generationVersion(),
+                            preparation.healthSummaryId(),
+                            aiResult
+                    )
             );
         } catch (RuntimeException e) {
             transactionService.reset(
