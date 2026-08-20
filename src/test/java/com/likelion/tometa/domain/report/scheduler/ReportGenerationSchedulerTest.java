@@ -129,6 +129,8 @@ class ReportGenerationSchedulerTest {
 
         verify(dailyReportGenerationService)
                 .generate(failedUser, reportDate);
+        verify(pushNotificationService, never())
+                .sendDailyReportNotification(1L, reportDate);
         verify(dailyReportGenerationService).generate(nextUser, reportDate);
     }
 
