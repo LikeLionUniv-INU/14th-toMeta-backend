@@ -74,6 +74,7 @@ public class WeeklyReportNotificationService {
                         attemptId
                 );
             } else {
+                persistUnknownOutcome(reportId, attemptId, e);
                 log.atError()
                         .setCause(e)
                         .addArgument(reportId)
@@ -81,6 +82,26 @@ public class WeeklyReportNotificationService {
                         .log("Weekly notification delivery outcome is unknown. reportId={}, attemptId={}");
             }
             throw e;
+        }
+    }
+
+    private void persistUnknownOutcome(
+            Long reportId,
+            String attemptId,
+            RuntimeException deliveryFailure
+    ) {
+        try {
+            int markedUnknown = weeklyReportRepository
+                    .markWeeklyNotificationUnknown(reportId, attemptId);
+            if (markedUnknown == 0) {
+                log.warn(
+                        "Weekly notification was not transitioned to unknown. reportId={}, attemptId={}",
+                        reportId,
+                        attemptId
+                );
+            }
+        } catch (RuntimeException persistenceFailure) {
+            deliveryFailure.addSuppressed(persistenceFailure);
         }
     }
 

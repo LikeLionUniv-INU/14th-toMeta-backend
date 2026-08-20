@@ -147,6 +147,52 @@ class ReportSchedulerRepositoryIntegrationTest {
         );
     }
 
+    @Test
+    void staleSendingNotification_isMarkedUnknownAndCannotBeReclaimed() {
+        User user = userRepository.save(User.builder().build());
+        WeeklyReport report = WeeklyReport.builder()
+                .user(user)
+                .weekStartDate(WEEK_START_DATE)
+                .weekEndDate(WEEK_END_DATE)
+                .build();
+        report.complete("summary", "solution");
+        weeklyReportRepository.saveAndFlush(report);
+        LocalDateTime startedAt = LocalDateTime.of(2026, 8, 24, 10, 0);
+
+        assertEquals(1, weeklyReportRepository.claimWeeklyNotification(
+                report.getId(),
+                "attempt-unknown",
+                startedAt,
+                startedAt.minusMinutes(5)
+        ));
+        assertEquals(1, weeklyReportRepository.beginWeeklyNotificationDelivery(
+                report.getId(),
+                "attempt-unknown"
+        ));
+        assertEquals(
+                1,
+                weeklyReportRepository
+                        .markStaleWeeklyNotificationDeliveriesUnknown(
+                                startedAt.plusMinutes(5)
+                        )
+        );
+
+        WeeklyReport unknownReport = weeklyReportRepository
+                .findById(report.getId())
+                .orElseThrow();
+        assertEquals("unknown", unknownReport.getNotificationStatus());
+        assertEquals(
+                "attempt-unknown",
+                unknownReport.getNotificationAttemptId()
+        );
+        assertEquals(0, weeklyReportRepository.claimWeeklyNotification(
+                report.getId(),
+                "attempt-retry",
+                startedAt.plusMinutes(10),
+                startedAt.plusMinutes(5)
+        ));
+    }
+
     private DailyReport saveDailyReport(
             User user,
             LocalDate date,

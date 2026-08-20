@@ -175,6 +175,33 @@ public class ReportGenerationScheduler {
         );
     }
 
+    @Scheduled(
+            cron = "${app.report.scheduler.weekly-notification-recovery-cron:0 * * * * *}",
+            zone = "${app.report.scheduler.zone:Asia/Seoul}"
+    )
+    public void recoverStaleWeeklyNotificationDeliveries() {
+        LocalDateTime staleBefore = currentDateTime()
+                .truncatedTo(ChronoUnit.MINUTES)
+                .minus(NOTIFICATION_TIMEOUT);
+        try {
+            int recovered = weeklyReportRepository
+                    .markStaleWeeklyNotificationDeliveriesUnknown(staleBefore);
+            if (recovered > 0) {
+                log.warn(
+                        "Stale weekly notification deliveries marked unknown. staleBefore={}, recovered={}",
+                        staleBefore,
+                        recovered
+                );
+            }
+        } catch (RuntimeException e) {
+            log.error(
+                    "Failed to mark stale weekly notification deliveries as unknown. staleBefore={}",
+                    staleBefore,
+                    e
+            );
+        }
+    }
+
     private LocalDateTime currentDateTime() {
         return LocalDateTime.now(clock.withZone(KOREA_ZONE));
     }

@@ -171,6 +171,32 @@ public interface WeeklyReportRepository extends JpaRepository<WeeklyReport, Long
     @Transactional
     @Query("""
             update WeeklyReport weeklyReport
+               set weeklyReport.notificationStatus = 'unknown'
+             where weeklyReport.id = :reportId
+               and weeklyReport.notificationStatus = 'sending'
+               and weeklyReport.notificationAttemptId = :attemptId
+            """)
+    int markWeeklyNotificationUnknown(
+            @Param("reportId") Long reportId,
+            @Param("attemptId") String attemptId
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            update WeeklyReport weeklyReport
+               set weeklyReport.notificationStatus = 'unknown'
+             where weeklyReport.notificationStatus = 'sending'
+               and weeklyReport.notificationStartedAt <= :staleBefore
+            """)
+    int markStaleWeeklyNotificationDeliveriesUnknown(
+            @Param("staleBefore") LocalDateTime staleBefore
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            update WeeklyReport weeklyReport
                set weeklyReport.notificationStatus = 'pending',
                    weeklyReport.notificationStartedAt = null,
                    weeklyReport.notificationAttemptId = null

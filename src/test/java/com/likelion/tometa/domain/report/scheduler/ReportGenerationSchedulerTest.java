@@ -145,4 +145,21 @@ class ReportGenerationSchedulerTest {
 
         verify(weeklyReportNotificationService).send(10L, now);
     }
+
+    @Test
+    void weeklyNotificationRecovery_marksStaleSendingAsUnknown() {
+        LocalDateTime now = LocalDateTime.of(2026, 8, 24, 0, 1);
+        when(weeklyReportRepository
+                .markStaleWeeklyNotificationDeliveriesUnknown(
+                        now.minusMinutes(5)
+                ))
+                .thenReturn(1);
+
+        scheduler.recoverStaleWeeklyNotificationDeliveries();
+
+        verify(weeklyReportRepository)
+                .markStaleWeeklyNotificationDeliveriesUnknown(
+                        now.minusMinutes(5)
+                );
+    }
 }

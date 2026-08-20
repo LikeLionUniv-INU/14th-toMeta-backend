@@ -102,7 +102,7 @@ class WeeklyReportNotificationServiceTest {
     }
 
     @Test
-    void send_doesNotResetClaimAfterDeliveryStarts() {
+    void send_marksOutcomeUnknownWhenDeliveryFailsAfterStarting() {
         User user = mock(User.class);
         when(user.getId()).thenReturn(1L);
         WeeklyReport report = WeeklyReport.builder()
@@ -126,6 +126,10 @@ class WeeklyReportNotificationServiceTest {
                 1L,
                 WEEK_START_DATE
         )).thenThrow(new IllegalStateException("delivery failed"));
+        when(weeklyReportRepository.markWeeklyNotificationUnknown(
+                eq(1L),
+                anyString()
+        )).thenReturn(1);
 
         assertThrows(
                 IllegalStateException.class,
@@ -134,6 +138,8 @@ class WeeklyReportNotificationServiceTest {
 
         verify(weeklyReportRepository, never())
                 .resetWeeklyNotificationClaim(eq(1L), anyString());
+        verify(weeklyReportRepository)
+                .markWeeklyNotificationUnknown(eq(1L), anyString());
     }
 
     @Test
@@ -166,6 +172,10 @@ class WeeklyReportNotificationServiceTest {
                 anyString(),
                 eq(REQUESTED_AT)
         )).thenThrow(new IllegalStateException("database unavailable"));
+        when(weeklyReportRepository.markWeeklyNotificationUnknown(
+                eq(1L),
+                anyString()
+        )).thenReturn(1);
 
         assertThrows(
                 IllegalStateException.class,
@@ -179,6 +189,8 @@ class WeeklyReportNotificationServiceTest {
                 .sendWeeklyReportNotification(1L, WEEK_START_DATE);
         verify(weeklyReportRepository, never())
                 .resetWeeklyNotificationClaim(eq(1L), anyString());
+        verify(weeklyReportRepository)
+                .markWeeklyNotificationUnknown(eq(1L), anyString());
     }
 
     @Test
