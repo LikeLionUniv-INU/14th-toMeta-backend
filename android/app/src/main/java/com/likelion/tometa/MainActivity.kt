@@ -637,6 +637,46 @@ class MainActivity : ComponentActivity() {
         return cameraIntent
     }
 
+    private fun isAllowedFileChooserUri(
+        uri: Uri,
+        cameraUri: Uri?
+    ): Boolean {
+        if (
+            cameraUri != null &&
+            uri == cameraUri
+        ) {
+            return (pendingCameraFile?.length() ?: 0L) > 0L
+        }
+
+        if (
+            !uri.scheme.equals(
+                "content",
+                ignoreCase = true
+            )
+        ) {
+            return false
+        }
+
+        if (
+            uri.authority ==
+            "$packageName.fileprovider"
+        ) {
+            return false
+        }
+
+        return runCatching {
+            contentResolver
+                .openFileDescriptor(
+                    uri,
+                    "r"
+                )
+                ?.use {
+                    true
+                }
+                ?: false
+        }.getOrDefault(false)
+    }
+
     private fun completeFileChooser(
         resultCode: Int,
         data: Intent?
@@ -645,23 +685,41 @@ class MainActivity : ComponentActivity() {
             pendingFileChooserCallback
                 ?: return
 
-        val cameraUri = pendingCameraUri
+        val cameraUri =
+            pendingCameraUri
 
-        val parsedUris = data?.let {
-            WebChromeClient
-                .FileChooserParams
-                .parseResult(
-                    resultCode,
-                    it
-                )
-        }
+        val parsedUris =
+            if (
+                resultCode ==
+                Activity.RESULT_OK
+            ) {
+                data
+                    ?.let {
+                        WebChromeClient
+                            .FileChooserParams
+                            .parseResult(
+                                resultCode,
+                                it
+                            )
+                    }
+                    ?.filter {
+                        isAllowedFileChooserUri(
+                            uri = it,
+                            cameraUri = cameraUri
+                        )
+                    }
+                    ?.toTypedArray()
+            } else {
+                null
+            }
 
         val capturedImageAvailable =
             cameraUri != null &&
                     (pendingCameraFile?.length() ?: 0L) > 0L
 
         val selectedUris = when {
-            resultCode != Activity.RESULT_OK ->
+            resultCode !=
+                    Activity.RESULT_OK ->
                 null
 
             !parsedUris.isNullOrEmpty() ->
@@ -681,7 +739,8 @@ class MainActivity : ComponentActivity() {
                             it == cameraUri
                         } == true
 
-        val cameraFile = pendingCameraFile
+        val cameraFile =
+            pendingCameraFile
 
         pendingFileChooserCallback =
             null
