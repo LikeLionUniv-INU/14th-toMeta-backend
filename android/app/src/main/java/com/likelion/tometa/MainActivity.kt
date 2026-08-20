@@ -8,12 +8,12 @@ import android.net.Uri
 import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -23,9 +23,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.health.connect.client.PermissionController
+import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
-import java.io.ByteArrayInputStream
+import com.likelion.tometa.healthconnect.HealthConnectManager
+import com.likelion.tometa.healthconnect.HealthConnectPermissions
+import com.likelion.tometa.webview.HealthConnectWebBridge
 
 class MainActivity : ComponentActivity() {
 
@@ -37,11 +41,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private var currentWebView: WebView? = null
+    private var pendingPermissionReplyProxy: JavaScriptReplyProxy? = null
+    private lateinit var healthConnectManager: HealthConnectManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // WebView에서 anonymous_session 등의 Cookie 저장을 허용
+        healthConnectManager = HealthConnectManager(applicationContext)
+
+        // WebView에서 anonymous_session 등의 Cookie 저장 허용
         CookieManager.getInstance().setAcceptCookie(true)
 
         setContent {
@@ -52,10 +60,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @WebViewCompat.ExperimentalSaveState
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
 
-        // 화면 재생성 시 현재 WebView 페이지와 방문 기록을 보존
+        // 화면 재생성 시 현재 WebView 페이지와 방문 기록 보존
         currentWebView?.let { webView ->
             webView.url
                 ?.takeIf { isTrustedUrl(Uri.parse(it)) }
@@ -64,7 +73,7 @@ class MainActivity : ComponentActivity() {
             if (WebViewFeature.isFeatureSupported(WebViewFeature.SAVE_STATE)) {
                 val webViewState = Bundle()
 
-                // WebView 방문 기록 크기를 제한해 savedInstanceState 초과를 방지
+                // WebView 상태 크기를 제한해 savedInstanceState 초과 방지
                 WebViewCompat.saveState(
                     webView,
                     webViewState,
@@ -72,32 +81,43 @@ class MainActivity : ComponentActivity() {
                     false
                 )
 
-                outState.putBundle(WEB_VIEW_STATE_KEY, webViewState)
+                outState.putBundle(
+                    WEB_VIEW_STATE_KEY,
+                    webViewState
+                )
             }
         }
     }
 
-    // WebView 내부에서 허용할 React 배포 주소인지 확인
     private fun isTrustedUrl(uri: Uri): Boolean {
         val trustedUri = Uri.parse(WEB_URL)
 
-        return uri.scheme.equals(trustedUri.scheme, ignoreCase = true) &&
-                uri.host.equals(trustedUri.host, ignoreCase = true) &&
+        return uri.scheme.equals(
+            trustedUri.scheme,
+            ignoreCase = true
+        ) &&
+                uri.host.equals(
+                    trustedUri.host,
+                    ignoreCase = true
+                ) &&
                 uri.port == trustedUri.port
     }
 
-    // 외부 HTTP(S) 링크를 처리 가능한 시스템 브라우저로 전달
-    private fun openExternalUrl(context: Context, uri: Uri) {
-        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+    private fun openExternalUrl(
+        context: Context,
+        uri: Uri
+    ) {
+        val intent = Intent(
+            Intent.ACTION_VIEW,
+            uri
+        ).apply {
             addCategory(Intent.CATEGORY_BROWSABLE)
         }
 
         try {
-            if (intent.resolveActivity(context.packageManager) != null) {
-                context.startActivity(intent)
-            }
+            context.startActivity(intent)
         } catch (_: ActivityNotFoundException) {
-            // 처리 가능한 앱이 없으면 현재 WebView 화면을 유지
+            // 처리 가능한 앱이 없으면 현재 WebView 화면 유지
         }
     }
 
@@ -115,7 +135,33 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(false)
         }
 
-        // WebView 방문 기록이 있으면 이전 웹 페이지로 이동
+        val permissionLauncher =
+            rememberLauncherForActivityResult(
+                contract =
+                    PermissionController
+                        .createRequestPermissionResultContract()
+            ) { grantedPermissions ->
+
+                val result =
+                    if (
+                        grantedPermissions.containsAll(
+                            HealthConnectPermissions.READ_PERMISSIONS
+                        )
+                    ) {
+                        HealthConnectWebBridge.RESULT_GRANTED
+                    } else {
+                        HealthConnectWebBridge.RESULT_DENIED
+                    }
+
+                pendingPermissionReplyProxy?.let { replyProxy ->
+                    runCatching {
+                        replyProxy.postMessage(result)
+                    }
+                }
+
+                pendingPermissionReplyProxy = null
+            }
+
         BackHandler(enabled = canGoBack) {
             webView?.goBack()
         }
@@ -124,87 +170,138 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
                 WebView(context).apply {
-                    // React 실행을 위해 JavaScript를 활성화
+
+                    // React 실행을 위해 JavaScript 활성화
                     settings.javaScriptEnabled = true
 
-                    // localStorage와 sessionStorage 사용을 허용
+                    // localStorage, sessionStorage 사용 허용
                     settings.domStorageEnabled = true
 
-                    // HTTPS 페이지에서 HTTP 리소스 로드를 차단
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    // HTTPS 페이지에서 HTTP 리소스 로드 차단
+                    settings.mixedContentMode =
+                        WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
-                    webViewClient = object : WebViewClient() {
+                    // 원격 웹 콘텐츠만 사용하므로 로컬 파일 접근 차단
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
 
-                        // 페이지 이동 후 뒤로가기 가능 여부를 Compose 상태에 반영
-                        override fun doUpdateVisitedHistory(
-                            view: WebView?,
-                            url: String?,
-                            isReload: Boolean
-                        ) {
-                            super.doUpdateVisitedHistory(view, url, isReload)
-                            canGoBack = view?.canGoBack() == true
-                        }
+                    // 신뢰된 React Origin에서만 Health Connect Native Bridge 허용
+                    val bridgeAttached =
+                        HealthConnectWebBridge(
+                            trustedOrigin = WEB_URL,
+                            healthConnectManager = healthConnectManager,
+                            onRequestPermissions = { replyProxy ->
 
-                        // 신뢰하는 React 배포 주소만 WebView 내부에서 처리
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView,
-                            request: WebResourceRequest
-                        ): Boolean {
-                            val uri = request.url
+                                if (pendingPermissionReplyProxy != null) {
+                                    replyProxy.postMessage(
+                                        HealthConnectWebBridge.RESULT_BUSY
+                                    )
+                                } else {
+                                    pendingPermissionReplyProxy =
+                                        replyProxy
 
-                            if (isTrustedUrl(uri)) {
-                                return false
+                                    permissionLauncher.launch(
+                                        HealthConnectPermissions.READ_PERMISSIONS
+                                    )
+                                }
+                            }
+                        ).attach(this)
+
+                    webViewClient =
+                        object : WebViewClient() {
+
+                            override fun onPageFinished(
+                                view: WebView?,
+                                url: String?
+                            ) {
+                                super.onPageFinished(
+                                    view,
+                                    url
+                                )
+
+                                if (
+                                    !bridgeAttached &&
+                                    view != null &&
+                                    url != null &&
+                                    runCatching {
+                                        isTrustedUrl(Uri.parse(url))
+                                    }.getOrDefault(false)
+                                ) {
+                                    // WebMessageListener 미지원 상태를 웹에 노출
+                                    view.evaluateJavascript(
+                                        """
+                                        window.__TOMETA_NATIVE_BRIDGE_STATUS__ = 'unsupported';
+                                        window.dispatchEvent(
+                                            new CustomEvent(
+                                                'tometa-native-bridge-status',
+                                                { detail: 'unsupported' }
+                                            )
+                                        );
+                                        """.trimIndent(),
+                                        null
+                                    )
+                                }
                             }
 
-                            // 신뢰하지 않는 서브프레임 요청은 차단
-                            if (!request.isForMainFrame) {
+                            override fun doUpdateVisitedHistory(
+                                view: WebView?,
+                                url: String?,
+                                isReload: Boolean
+                            ) {
+                                super.doUpdateVisitedHistory(
+                                    view,
+                                    url,
+                                    isReload
+                                )
+
+                                canGoBack =
+                                    view?.canGoBack() == true
+                            }
+
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView,
+                                request: WebResourceRequest
+                            ): Boolean {
+                                val uri = request.url
+
+                                if (isTrustedUrl(uri)) {
+                                    return false
+                                }
+
+                                // 신뢰하지 않는 서브프레임 요청 차단
+                                if (!request.isForMainFrame) {
+                                    return true
+                                }
+
+                                // 메인 프레임의 외부 HTTP(S) 링크는 시스템 브라우저로 처리
+                                if (
+                                    uri.scheme == "http" ||
+                                    uri.scheme == "https"
+                                ) {
+                                    openExternalUrl(
+                                        context,
+                                        uri
+                                    )
+                                }
+
                                 return true
                             }
-
-                            // 메인 프레임의 외부 HTTP(S) 링크만 시스템 브라우저에서 처리
-                            if (uri.scheme == "http" || uri.scheme == "https") {
-                                openExternalUrl(context, uri)
-                            }
-
-                            return true
                         }
 
-                        // 외부 도메인으로의 메인 프레임 POST 요청은 WebView에서 차단
-                        override fun shouldInterceptRequest(
-                            view: WebView?,
-                            request: WebResourceRequest
-                        ): WebResourceResponse? {
-                            if (
-                                request.isForMainFrame &&
-                                request.method.equals("POST", ignoreCase = true) &&
-                                !isTrustedUrl(request.url)
-                            ) {
-                                return WebResourceResponse(
-                                    "text/plain",
-                                    "UTF-8",
-                                    403,
-                                    "Forbidden",
-                                    emptyMap(),
-                                    ByteArrayInputStream(ByteArray(0))
-                                )
-                            }
-
-                            return super.shouldInterceptRequest(view, request)
-                        }
-                    }
-
-                    // 저장된 WebView 상태가 있으면 우선 방문 기록을 복원
-                    val restored = savedWebViewState?.let {
-                        restoreState(it)
-                    } != null
+                    // 저장된 WebView 상태가 있으면 우선 복원
+                    val restored =
+                        savedWebViewState?.let {
+                            restoreState(it)
+                        } != null
 
                     if (!restored) {
-                        // 저장 URL도 신뢰 주소인지 검증한 뒤 로드
-                        val urlToLoad = savedUrl
-                            ?.let(Uri::parse)
-                            ?.takeIf(::isTrustedUrl)
-                            ?.toString()
-                            ?: WEB_URL
+                        // 저장 URL도 신뢰 주소인지 검증 후 로드
+                        val urlToLoad =
+                            savedUrl
+                                ?.let(Uri::parse)
+                                ?.takeIf(::isTrustedUrl)
+                                ?.toString()
+                                ?: WEB_URL
 
                         loadUrl(urlToLoad)
                     }
@@ -216,10 +313,20 @@ class MainActivity : ComponentActivity() {
                 canGoBack = view.canGoBack()
             },
             onRelease = { view ->
-                // WebView가 보유한 렌더링 리소스와 Activity 참조를 정리
                 if (currentWebView === view) {
                     currentWebView = null
                 }
+
+                // 권한 요청 도중 WebView가 종료될 경우 응답 없이 남지 않도록 처리
+                pendingPermissionReplyProxy?.let { replyProxy ->
+                    runCatching {
+                        replyProxy.postMessage(
+                            HealthConnectWebBridge.RESULT_CANCELLED
+                        )
+                    }
+                }
+
+                pendingPermissionReplyProxy = null
 
                 view.stopLoading()
                 view.removeAllViews()
