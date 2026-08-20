@@ -4,6 +4,7 @@ import java.util.List;
 
 public record CosmeticSearchCandidate(
         String productName,
+        String brandName,
         String productType,
         String imageUrl,
         String benefit,

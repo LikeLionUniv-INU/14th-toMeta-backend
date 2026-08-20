@@ -19,6 +19,7 @@ public class CosmeticSearchService {
 
     private static final int MIN_KEYWORD_LENGTH = 2;
     private static final int MAX_KEYWORD_LENGTH = 100;
+    private static final String UNKNOWN_BRAND_NAME = "-";
 
     private final AnonymousSessionUserResolver sessionUserResolver;
     private final OpenAiCosmeticSearchClient cosmeticSearchClient;
@@ -58,11 +59,20 @@ public class CosmeticSearchService {
             items.add(new CosmeticSearchResponseDto.Item(
                     index + 1,
                     candidate.productName(),
+                    resolveBrandName(candidate.brandName()),
                     candidate.productType(),
                     candidate.imageUrl()
             ));
         }
 
         return List.copyOf(items);
+    }
+
+    private String resolveBrandName(String brandName) {
+        if (brandName == null || brandName.isBlank()) {
+            return UNKNOWN_BRAND_NAME;
+        }
+
+        return brandName.trim();
     }
 }
