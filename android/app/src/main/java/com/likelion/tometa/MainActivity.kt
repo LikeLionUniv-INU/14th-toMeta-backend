@@ -30,9 +30,12 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.likelion.tometa.healthconnect.HealthConnectManager
 import com.likelion.tometa.healthconnect.HealthConnectPermissions
+import com.likelion.tometa.healthconnect.HealthConnectReader
 import com.likelion.tometa.healthconnect.device.DeviceIdProvider
 import com.likelion.tometa.healthconnect.network.HealthConnectApiClient
 import com.likelion.tometa.healthconnect.network.HealthConnectRepository
+import com.likelion.tometa.healthconnect.sync.HealthSyncCoordinator
+import com.likelion.tometa.healthconnect.sync.HealthSyncRequestFactory
 import com.likelion.tometa.healthconnect.token.HealthDeviceTokenStore
 import com.likelion.tometa.webview.HealthConnectWebBridge
 import kotlinx.coroutines.CancellationException
@@ -51,15 +54,20 @@ class MainActivity : ComponentActivity() {
 
     private var currentWebView: WebView? = null
     private var pendingPermissionReplyProxy: JavaScriptReplyProxy? = null
+    private var pendingSyncReplyProxy: JavaScriptReplyProxy? = null
     private var healthConnectJob: Job? = null
+    private var healthSyncJob: Job? = null
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var healthConnectRepository: HealthConnectRepository
+    private lateinit var healthSyncCoordinator: HealthSyncCoordinator
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         healthConnectManager =
-            HealthConnectManager(applicationContext)
+            HealthConnectManager(
+                applicationContext
+            )
 
         healthConnectRepository =
             HealthConnectRepository(
@@ -67,13 +75,29 @@ class MainActivity : ComponentActivity() {
                     "$WEB_URL/"
                 ),
                 deviceIdProvider =
-                    DeviceIdProvider(applicationContext),
+                    DeviceIdProvider(
+                        applicationContext
+                    ),
                 healthDeviceTokenStore =
-                    HealthDeviceTokenStore(applicationContext)
+                    HealthDeviceTokenStore(
+                        applicationContext
+                    )
             )
 
-        // WebView에서 anonymous_session 등의 Cookie 저장 허용
-        CookieManager.getInstance().setAcceptCookie(true)
+        healthSyncCoordinator =
+            HealthSyncCoordinator(
+                requestFactory =
+                    HealthSyncRequestFactory(
+                        HealthConnectReader(
+                            healthConnectManager
+                        )
+                    ),
+                healthConnectRepository =
+                    healthConnectRepository
+            )
+
+        CookieManager.getInstance()
+            .setAcceptCookie(true)
 
         setContent {
             ToMetaWebView(
@@ -90,10 +114,13 @@ class MainActivity : ComponentActivity() {
     }
 
     @WebViewCompat.ExperimentalSaveState
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
+    override fun onSaveInstanceState(
+        outState: Bundle
+    ) {
+        super.onSaveInstanceState(
+            outState
+        )
 
-        // 화면 재생성 시 현재 WebView 페이지와 방문 기록 보존
         currentWebView?.let { webView ->
             webView.url
                 ?.takeIf {
@@ -116,7 +143,6 @@ class MainActivity : ComponentActivity() {
                 val webViewState =
                     Bundle()
 
-                // WebView 상태 크기를 제한해 savedInstanceState 초과 방지
                 WebViewCompat.saveState(
                     webView,
                     webViewState,
@@ -146,7 +172,8 @@ class MainActivity : ComponentActivity() {
                     trustedUri.host,
                     ignoreCase = true
                 ) &&
-                uri.port == trustedUri.port
+                uri.port ==
+                trustedUri.port
     }
 
     private fun openExternalUrl(
@@ -226,14 +253,11 @@ class MainActivity : ComponentActivity() {
 
                         true
                     } catch (e: CancellationException) {
-                        // Coroutine 취소를 일반 연결 실패로 처리하지 않음
                         throw e
                     } catch (_: Exception) {
                         false
                     }
 
-                // WebView가 이미 종료되거나 새로운 요청으로 교체된 경우
-                // 기존 ReplyProxy에는 응답하지 않음
                 if (
                     pendingPermissionReplyProxy !==
                     replyProxy
@@ -269,6 +293,88 @@ class MainActivity : ComponentActivity() {
                 job
             ) {
                 healthConnectJob =
+                    null
+            }
+        }
+    }
+
+    private fun syncHealthData(
+        replyProxy: JavaScriptReplyProxy
+    ) {
+        if (
+            pendingPermissionReplyProxy != null ||
+            healthConnectJob?.isActive == true ||
+            pendingSyncReplyProxy != null ||
+            healthSyncJob?.isActive == true
+        ) {
+            runCatching {
+                replyProxy.postMessage(
+                    HealthConnectWebBridge.RESULT_SYNC_BUSY
+                )
+            }
+
+            return
+        }
+
+        pendingSyncReplyProxy =
+            replyProxy
+
+        val job =
+            lifecycleScope.launch {
+                val result =
+                    try {
+                        val hasPermissions =
+                            healthConnectManager
+                                .hasAllPermissions()
+
+                        if (!hasPermissions) {
+                            HealthConnectWebBridge
+                                .RESULT_SYNC_PERMISSION_MISSING
+                        } else {
+                            healthSyncCoordinator
+                                .syncRecent()
+
+                            HealthConnectWebBridge
+                                .RESULT_SYNC_SUCCESS
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        HealthConnectWebBridge
+                            .RESULT_SYNC_FAILED
+                    }
+
+                if (
+                    pendingSyncReplyProxy !==
+                    replyProxy
+                ) {
+                    return@launch
+                }
+
+                runCatching {
+                    replyProxy.postMessage(
+                        result
+                    )
+                }
+
+                if (
+                    pendingSyncReplyProxy ===
+                    replyProxy
+                ) {
+                    pendingSyncReplyProxy =
+                        null
+                }
+            }
+
+        healthSyncJob =
+            job
+
+        job.invokeOnCompletion {
+            if (
+                healthSyncJob ===
+                job
+            ) {
+                healthSyncJob =
                     null
             }
         }
@@ -318,7 +424,6 @@ class MainActivity : ComponentActivity() {
                         pendingPermissionReplyProxy =
                             null
                     } else {
-                        // Health Connect 권한 허용 후 서버 연결 등록
                         connectHealthDevice(
                             replyProxy
                         )
@@ -337,27 +442,21 @@ class MainActivity : ComponentActivity() {
                 Modifier.fillMaxSize(),
             factory = { context ->
                 WebView(context).apply {
-
-                    // React 실행을 위해 JavaScript 활성화
                     settings.javaScriptEnabled =
                         true
 
-                    // localStorage, sessionStorage 사용 허용
                     settings.domStorageEnabled =
                         true
 
-                    // HTTPS 페이지에서 HTTP 리소스 로드 차단
                     settings.mixedContentMode =
                         WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
-                    // 원격 웹 콘텐츠만 사용하므로 로컬 파일 접근 차단
                     settings.allowFileAccess =
                         false
 
                     settings.allowContentAccess =
                         false
 
-                    // 신뢰된 React Origin에서만 Health Connect Native Bridge 허용
                     val bridgeAttached =
                         HealthConnectWebBridge(
                             trustedOrigin =
@@ -365,7 +464,6 @@ class MainActivity : ComponentActivity() {
                             healthConnectManager =
                                 healthConnectManager,
                             onRequestPermissions = { replyProxy ->
-
                                 if (
                                     pendingPermissionReplyProxy !=
                                     null
@@ -381,6 +479,11 @@ class MainActivity : ComponentActivity() {
                                         HealthConnectPermissions.READ_PERMISSIONS
                                     )
                                 }
+                            },
+                            onRequestSync = { replyProxy ->
+                                syncHealthData(
+                                    replyProxy
+                                )
                             }
                         ).attach(this)
 
@@ -406,7 +509,6 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }.getOrDefault(false)
                                 ) {
-                                    // WebMessageListener 미지원 상태를 웹에 노출
                                     view.evaluateJavascript(
                                         """
                                         window.__TOMETA_NATIVE_BRIDGE_STATUS__ = 'unsupported';
@@ -453,14 +555,12 @@ class MainActivity : ComponentActivity() {
                                     return false
                                 }
 
-                                // 신뢰하지 않는 서브프레임 요청 차단
                                 if (
                                     !request.isForMainFrame
                                 ) {
                                     return true
                                 }
 
-                                // 메인 프레임의 외부 HTTP(S) 링크는 시스템 브라우저로 처리
                                 if (
                                     uri.scheme ==
                                     "http" ||
@@ -477,7 +577,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                    // 저장된 WebView 상태가 있으면 우선 복원
                     val restored =
                         savedWebViewState?.let {
                             restoreState(
@@ -486,7 +585,6 @@ class MainActivity : ComponentActivity() {
                         } != null
 
                     if (!restored) {
-                        // 저장 URL도 신뢰 주소인지 검증 후 로드
                         val urlToLoad =
                             savedUrl
                                 ?.let(
@@ -523,21 +621,36 @@ class MainActivity : ComponentActivity() {
                         null
                 }
 
-                // React에 먼저 요청 종료 상태 전달
-                pendingPermissionReplyProxy?.let { replyProxy ->
-                    runCatching {
-                        replyProxy.postMessage(
-                            HealthConnectWebBridge.RESULT_CANCELLED
-                        )
+                pendingPermissionReplyProxy
+                    ?.let { replyProxy ->
+                        runCatching {
+                            replyProxy.postMessage(
+                                HealthConnectWebBridge.RESULT_CANCELLED
+                            )
+                        }
                     }
-                }
+
+                pendingSyncReplyProxy
+                    ?.let { replyProxy ->
+                        runCatching {
+                            replyProxy.postMessage(
+                                HealthConnectWebBridge.RESULT_CANCELLED
+                            )
+                        }
+                    }
 
                 pendingPermissionReplyProxy =
                     null
 
-                // WebView 수명 종료 시 진행 중인 서버 연결 작업도 취소
+                pendingSyncReplyProxy =
+                    null
+
                 healthConnectJob?.cancel()
                 healthConnectJob =
+                    null
+
+                healthSyncJob?.cancel()
+                healthSyncJob =
                     null
 
                 view.stopLoading()

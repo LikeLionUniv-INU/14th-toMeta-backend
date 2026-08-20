@@ -11,7 +11,8 @@ import com.likelion.tometa.healthconnect.HealthConnectManager
 class HealthConnectWebBridge(
     private val trustedOrigin: String,
     private val healthConnectManager: HealthConnectManager,
-    private val onRequestPermissions: (JavaScriptReplyProxy) -> Unit
+    private val onRequestPermissions: (JavaScriptReplyProxy) -> Unit,
+    private val onRequestSync: (JavaScriptReplyProxy) -> Unit
 ) {
 
     companion object {
@@ -20,6 +21,9 @@ class HealthConnectWebBridge(
 
         const val REQUEST_PERMISSIONS =
             "requestHealthConnectPermissions"
+
+        const val REQUEST_SYNC =
+            "syncHealthConnectData"
 
         const val RESULT_GRANTED =
             "granted"
@@ -44,6 +48,18 @@ class HealthConnectWebBridge(
 
         const val RESULT_CONNECTION_FAILED =
             "connection_failed"
+
+        const val RESULT_SYNC_SUCCESS =
+            "sync_success"
+
+        const val RESULT_SYNC_FAILED =
+            "sync_failed"
+
+        const val RESULT_SYNC_BUSY =
+            "sync_busy"
+
+        const val RESULT_SYNC_PERMISSION_MISSING =
+            "sync_permission_missing"
     }
 
     fun attach(
@@ -68,7 +84,6 @@ class HealthConnectWebBridge(
                 isMainFrame,
                 replyProxy ->
 
-            // 신뢰된 Origin의 Main Frame 메시지만 처리
             if (
                 !isMainFrame ||
                 !isTrustedOrigin(
@@ -78,7 +93,6 @@ class HealthConnectWebBridge(
                 return@addWebMessageListener
             }
 
-            // 문자열 메시지만 지원
             if (
                 message.type !=
                 WebMessageCompat.TYPE_STRING
@@ -101,6 +115,21 @@ class HealthConnectWebBridge(
                         )
                     } else {
                         onRequestPermissions(
+                            replyProxy
+                        )
+                    }
+                }
+
+                REQUEST_SYNC -> {
+                    if (
+                        !healthConnectManager
+                            .isAvailable()
+                    ) {
+                        replyProxy.postMessage(
+                            RESULT_UNAVAILABLE
+                        )
+                    } else {
+                        onRequestSync(
                             replyProxy
                         )
                     }
