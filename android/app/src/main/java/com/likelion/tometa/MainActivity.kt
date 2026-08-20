@@ -1,331 +1,81 @@
 package com.likelion.tometa
 
+import android.annotation.SuppressLint
 import android.os.Bundle
+import android.webkit.CookieManager
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.PermissionController
-import com.likelion.tometa.healthconnect.HealthConnectManager
-import com.likelion.tometa.healthconnect.HealthConnectPermissions
-import com.likelion.tometa.healthconnect.HealthConnectReader
-import com.likelion.tometa.healthconnect.sync.HealthSyncRequestFactory
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import java.time.Instant
-import java.time.ZoneId
+import androidx.compose.ui.viewinterop.AndroidView
 
 class MainActivity : ComponentActivity() {
+
+    // WebView에서 로드할 React 배포 주소
+    companion object {
+        private const val WEB_URL = "https://14th-to-meta-frontend.vercel.app"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val healthConnectManager =
-            HealthConnectManager(this)
-
-        val healthConnectReader =
-            HealthConnectReader(
-                healthConnectManager
-            )
-
-        val healthSyncRequestFactory =
-            HealthSyncRequestFactory(
-                healthConnectReader
-            )
-
+        // 앱 실행 시 React WebView 화면을 표시
         setContent {
-
-            var sdkStatus by remember {
-                mutableStateOf<Int?>(null)
-            }
-
-            var statusText by remember {
-                mutableStateOf(
-                    "Health Connect 상태 확인 중..."
-                )
-            }
-
-            var permissionText by remember {
-                mutableStateOf("")
-            }
-
-            var healthDataText by remember {
-                mutableStateOf("")
-            }
-
-            val coroutineScope =
-                rememberCoroutineScope()
-
-            val permissionLauncher =
-                rememberLauncherForActivityResult(
-                    contract = PermissionController
-                        .createRequestPermissionResultContract()
-                ) { grantedPermissions ->
-
-                    statusText =
-                        if (
-                            grantedPermissions.containsAll(
-                                HealthConnectPermissions.READ_PERMISSIONS
-                            )
-                        ) {
-                            "Health Connect 권한 전체 허용됨"
-                        } else {
-                            "Health Connect 권한이 부족함"
-                        }
-
-                    permissionText =
-                        "허용된 권한 수: " +
-                                "${grantedPermissions.size} / " +
-                                "${HealthConnectPermissions.READ_PERMISSIONS.size}"
-                }
-
-            LaunchedEffect(Unit) {
-
-                val status =
-                    healthConnectManager.getSdkStatus()
-
-                sdkStatus = status
-
-                when (status) {
-
-                    HealthConnectClient.SDK_AVAILABLE -> {
-
-                        val grantedPermissions =
-                            healthConnectManager
-                                .getGrantedPermissions()
-
-                        statusText =
-                            if (
-                                grantedPermissions.containsAll(
-                                    HealthConnectPermissions.READ_PERMISSIONS
-                                )
-                            ) {
-                                "Health Connect 권한 전체 허용됨"
-                            } else {
-                                "Health Connect 사용 가능 / 권한 필요"
-                            }
-
-                        permissionText =
-                            "허용된 권한 수: " +
-                                    "${grantedPermissions.size} / " +
-                                    "${HealthConnectPermissions.READ_PERMISSIONS.size}"
-                    }
-
-                    HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
-
-                        statusText =
-                            "Health Connect 설치 또는 업데이트가 필요합니다."
-
-                        permissionText = ""
-                    }
-
-                    else -> {
-
-                        statusText =
-                            "이 기기에서는 Health Connect를 사용할 수 없습니다."
-
-                        permissionText = ""
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.Center
-            ) {
-
-                Text(
-                    text = statusText
-                )
-
-                if (permissionText.isNotEmpty()) {
-
-                    Spacer(
-                        modifier = Modifier.height(8.dp)
-                    )
-
-                    Text(
-                        text = permissionText
-                    )
-                }
-
-                if (
-                    sdkStatus ==
-                    HealthConnectClient.SDK_AVAILABLE
-                ) {
-
-                    Spacer(
-                        modifier = Modifier.height(24.dp)
-                    )
-
-                    Button(
-                        onClick = {
-
-                            permissionLauncher.launch(
-                                HealthConnectPermissions.READ_PERMISSIONS
-                            )
-                        }
-                    ) {
-                        Text(
-                            "Health Connect 권한 요청"
-                        )
-                    }
-
-                    Spacer(
-                        modifier = Modifier.height(8.dp)
-                    )
-
-                    Button(
-                        onClick = {
-
-                            coroutineScope.launch {
-
-                                val grantedPermissions =
-                                    healthConnectManager
-                                        .getGrantedPermissions()
-
-                                statusText =
-                                    if (
-                                        grantedPermissions.containsAll(
-                                            HealthConnectPermissions.READ_PERMISSIONS
-                                        )
-                                    ) {
-                                        "Health Connect 권한 전체 허용됨"
-                                    } else {
-                                        "Health Connect 권한이 부족함"
-                                    }
-
-                                permissionText =
-                                    "허용된 권한 수: " +
-                                            "${grantedPermissions.size} / " +
-                                            "${HealthConnectPermissions.READ_PERMISSIONS.size}"
-                            }
-                        }
-                    ) {
-                        Text(
-                            "권한 상태 다시 확인"
-                        )
-                    }
-
-                    Spacer(
-                        modifier = Modifier.height(8.dp)
-                    )
-
-                    Button(
-                        onClick = {
-
-                            coroutineScope.launch {
-
-                                if (
-                                    !healthConnectManager
-                                        .hasAllPermissions()
-                                ) {
-                                    healthDataText =
-                                        "Health Connect 권한이 부족합니다."
-
-                                    return@launch
-                                }
-
-                                healthDataText =
-                                    "Health Connect 데이터 조회 중..."
-
-                                try {
-
-                                    val zoneId =
-                                        ZoneId.systemDefault()
-
-                                    val referenceTime =
-                                        Instant.now()
-
-                                    val today =
-                                        referenceTime
-                                            .atZone(zoneId)
-                                            .toLocalDate()
-
-                                    val startDate =
-                                        today.minusDays(6)
-
-                                    val endDateExclusive =
-                                        today.plusDays(1)
-
-                                    val startTime =
-                                        startDate
-                                            .atStartOfDay(zoneId)
-                                            .toInstant()
-
-                                    val endTime =
-                                        referenceTime
-
-                                    val request =
-                                        healthSyncRequestFactory.create(
-                                            startTime = startTime,
-                                            endTime = endTime,
-                                            startDate = startDate,
-                                            endDateExclusive = endDateExclusive,
-                                            zoneId = zoneId
-                                        )
-
-                                    val json =
-                                        withContext(Dispatchers.Default) {
-                                            Json.encodeToString(request)
-                                        }
-
-                                    healthDataText =
-                                        """
-                                        서버 동기화 JSON 생성 성공
-
-                                        Raw Record: ${request.records.size}
-                                        Daily Steps: ${request.dailySteps.size}
-                                        JSON Size: ${json.length} chars
-                                        """.trimIndent()
-
-                                } catch (e: Exception) {
-
-                                    healthDataText =
-                                        "조회 실패: ${e.message}"
-                                }
-                            }
-                        }
-                    ) {
-                        Text(
-                            "최근 7일 데이터 조회"
-                        )
-                    }
-
-                    if (
-                        healthDataText.isNotEmpty()
-                    ) {
-
-                        Spacer(
-                            modifier = Modifier.height(16.dp)
-                        )
-
-                        Text(
-                            text = healthDataText
-                        )
-                    }
-                }
-            }
+            ToMetaWebView()
         }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    @Composable
+    private fun ToMetaWebView() {
+        // 뒤로가기 처리를 위해 현재 WebView 인스턴스를 저장
+        var webView by remember {
+            mutableStateOf<WebView?>(null)
+        }
+
+        // WebView 방문 기록이 있으면 이전 웹 페이지로 이동
+        BackHandler(
+            enabled = webView?.canGoBack() == true
+        ) {
+            webView?.goBack()
+        }
+
+        // Compose 화면에 Android WebView를 생성
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
+                WebView(context).apply {
+                    // React 실행을 위해 JavaScript를 활성화
+                    settings.javaScriptEnabled = true
+
+                    // localStorage와 sessionStorage 사용을 허용
+                    settings.domStorageEnabled = true
+
+                    // HTTPS 페이지에서 HTTP 리소스 로드를 차단
+                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+
+                    // anonymous_session 등 WebView 쿠키 저장을 허용
+                    CookieManager.getInstance().setAcceptCookie(true)
+
+                    // 페이지 이동을 외부 브라우저가 아닌 WebView 내부에서 처리
+                    webViewClient = WebViewClient()
+
+                    // Vercel에 배포된 React 서비스를 로드
+                    loadUrl(WEB_URL)
+
+                    // 생성한 WebView를 뒤로가기 처리에 사용
+                    webView = this
+                }
+            }
+        )
     }
 }
