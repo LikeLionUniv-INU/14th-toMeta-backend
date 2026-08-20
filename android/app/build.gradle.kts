@@ -7,7 +7,6 @@ plugins {
 
 android {
     namespace = "com.likelion.tometa"
-
     compileSdk = 37
 
     defaultConfig {
@@ -64,6 +63,7 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+    implementation(libs.firebase.installations)
 
     testImplementation(libs.junit)
 
