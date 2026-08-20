@@ -19,6 +19,11 @@ public enum ReportErrorCode implements BaseErrorCode {
             "REPORT_4042",
             "주간 리포트를 생성할 일간 리포트가 존재하지 않습니다."
     ),
+    WEEKLY_REPORT_NOT_FOUND(
+            HttpStatus.NOT_FOUND,
+            "REPORT_4043",
+            "주간 리포트가 존재하지 않습니다."
+    ),
     DAILY_REPORT_GENERATION_IN_PROGRESS(
             HttpStatus.CONFLICT,
             "REPORT_4091",
