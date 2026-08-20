@@ -168,6 +168,36 @@ class MypageControllerTest {
     }
 
     @Test
+    void getUserProfile_returnsNullFieldsBeforeProfileRegistration() throws Exception {
+        UserProfileResponseDto response = new UserProfileResponseDto(
+                null,
+                null,
+                null,
+                null
+        );
+        when(mypageService.getUserProfile("session-token")).thenReturn(response);
+
+        mockMvc.perform(get("/api/users/me/profile")
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": true,
+                          "code": "COMMON_200",
+                          "message": "요청에 성공했습니다.",
+                          "result": {
+                            "nickname": null,
+                            "gender": null,
+                            "ageGroup": null,
+                            "skinType": null
+                          }
+                        }
+                        """));
+
+        verify(mypageService).getUserProfile("session-token");
+    }
+
+    @Test
     void getUserProfile_returnsUnauthorizedForMissingSession() throws Exception {
         doThrow(new GeneralException(UserErrorCode.INVALID_ANONYMOUS_SESSION))
                 .when(mypageService)
