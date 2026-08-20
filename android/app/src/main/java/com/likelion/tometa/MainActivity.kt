@@ -8,7 +8,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -31,7 +30,6 @@ import androidx.webkit.WebViewFeature
 import com.likelion.tometa.healthconnect.HealthConnectManager
 import com.likelion.tometa.healthconnect.HealthConnectPermissions
 import com.likelion.tometa.webview.HealthConnectWebBridge
-import java.io.ByteArrayInputStream
 
 class MainActivity : ComponentActivity() {
 
@@ -117,13 +115,7 @@ class MainActivity : ComponentActivity() {
         }
 
         try {
-            if (
-                intent.resolveActivity(
-                    context.packageManager
-                ) != null
-            ) {
-                context.startActivity(intent)
-            }
+            context.startActivity(intent)
         } catch (_: ActivityNotFoundException) {
             // 처리 가능한 앱이 없으면 현재 WebView 화면 유지
         }
@@ -189,29 +181,67 @@ class MainActivity : ComponentActivity() {
                     settings.mixedContentMode =
                         WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
+                    // 원격 웹 콘텐츠만 사용하므로 로컬 파일 접근 차단
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
+
                     // 신뢰된 React Origin에서만 Health Connect Native Bridge 허용
-                    HealthConnectWebBridge(
-                        trustedOrigin = WEB_URL,
-                        healthConnectManager = healthConnectManager,
-                        onRequestPermissions = { replyProxy ->
+                    val bridgeAttached =
+                        HealthConnectWebBridge(
+                            trustedOrigin = WEB_URL,
+                            healthConnectManager = healthConnectManager,
+                            onRequestPermissions = { replyProxy ->
 
-                            if (pendingPermissionReplyProxy != null) {
-                                replyProxy.postMessage(
-                                    HealthConnectWebBridge.RESULT_BUSY
-                                )
-                            } else {
-                                pendingPermissionReplyProxy =
-                                    replyProxy
+                                if (pendingPermissionReplyProxy != null) {
+                                    replyProxy.postMessage(
+                                        HealthConnectWebBridge.RESULT_BUSY
+                                    )
+                                } else {
+                                    pendingPermissionReplyProxy =
+                                        replyProxy
 
-                                permissionLauncher.launch(
-                                    HealthConnectPermissions.READ_PERMISSIONS
-                                )
+                                    permissionLauncher.launch(
+                                        HealthConnectPermissions.READ_PERMISSIONS
+                                    )
+                                }
                             }
-                        }
-                    ).attach(this)
+                        ).attach(this)
 
                     webViewClient =
                         object : WebViewClient() {
+
+                            override fun onPageFinished(
+                                view: WebView?,
+                                url: String?
+                            ) {
+                                super.onPageFinished(
+                                    view,
+                                    url
+                                )
+
+                                if (
+                                    !bridgeAttached &&
+                                    view != null &&
+                                    url != null &&
+                                    runCatching {
+                                        isTrustedUrl(Uri.parse(url))
+                                    }.getOrDefault(false)
+                                ) {
+                                    // WebMessageListener 미지원 상태를 웹에 노출
+                                    view.evaluateJavascript(
+                                        """
+                                        window.__TOMETA_NATIVE_BRIDGE_STATUS__ = 'unsupported';
+                                        window.dispatchEvent(
+                                            new CustomEvent(
+                                                'tometa-native-bridge-status',
+                                                { detail: 'unsupported' }
+                                            )
+                                        );
+                                        """.trimIndent(),
+                                        null
+                                    )
+                                }
+                            }
 
                             override fun doUpdateVisitedHistory(
                                 view: WebView?,
@@ -256,37 +286,6 @@ class MainActivity : ComponentActivity() {
 
                                 return true
                             }
-
-                            override fun shouldInterceptRequest(
-                                view: WebView?,
-                                request: WebResourceRequest
-                            ): WebResourceResponse? {
-                                // 외부 도메인으로의 메인 프레임 POST 요청 차단
-                                if (
-                                    request.isForMainFrame &&
-                                    request.method.equals(
-                                        "POST",
-                                        ignoreCase = true
-                                    ) &&
-                                    !isTrustedUrl(request.url)
-                                ) {
-                                    return WebResourceResponse(
-                                        "text/plain",
-                                        "UTF-8",
-                                        403,
-                                        "Forbidden",
-                                        emptyMap(),
-                                        ByteArrayInputStream(
-                                            ByteArray(0)
-                                        )
-                                    )
-                                }
-
-                                return super.shouldInterceptRequest(
-                                    view,
-                                    request
-                                )
-                            }
                         }
 
                     // 저장된 WebView 상태가 있으면 우선 복원
@@ -316,6 +315,15 @@ class MainActivity : ComponentActivity() {
             onRelease = { view ->
                 if (currentWebView === view) {
                     currentWebView = null
+                }
+
+                // 권한 요청 도중 WebView가 종료될 경우 응답 없이 남지 않도록 처리
+                pendingPermissionReplyProxy?.let { replyProxy ->
+                    runCatching {
+                        replyProxy.postMessage(
+                            HealthConnectWebBridge.RESULT_CANCELLED
+                        )
+                    }
                 }
 
                 pendingPermissionReplyProxy = null
