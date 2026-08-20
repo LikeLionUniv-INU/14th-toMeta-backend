@@ -7,8 +7,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
@@ -18,9 +20,11 @@ import java.util.UUID;
 public class WeeklyReportNotificationService {
 
     private static final Duration DELIVERY_TIMEOUT = Duration.ofMinutes(5);
+    private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
 
     private final WeeklyReportRepository weeklyReportRepository;
     private final PushNotificationService pushNotificationService;
+    private final Clock clock;
 
     public NotificationResult send(Long reportId, LocalDateTime requestedAt) {
         LocalDateTime startedAt = requestedAt.truncatedTo(ChronoUnit.MICROS);
@@ -43,8 +47,15 @@ public class WeeklyReportNotificationService {
                     .findByIdWithUser(reportId)
                     .orElseThrow();
 
+            LocalDateTime deliveryStartedAt = LocalDateTime
+                    .now(clock.withZone(KOREA_ZONE))
+                    .truncatedTo(ChronoUnit.MICROS);
             int started = weeklyReportRepository
-                    .beginWeeklyNotificationDelivery(reportId, attemptId);
+                    .beginWeeklyNotificationDelivery(
+                            reportId,
+                            attemptId,
+                            deliveryStartedAt
+                    );
             if (started == 0) {
                 return NotificationResult.skipped();
             }

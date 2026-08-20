@@ -42,7 +42,7 @@ public class ReportGenerationScheduler {
 
     @Scheduled(
             cron = "${app.report.scheduler.daily-generation-cron:0 0 7 * * *}",
-            zone = "${app.report.scheduler.zone:Asia/Seoul}"
+            zone = "Asia/Seoul"
     )
     public void generateDailyReports() {
         LocalDate reportDate = currentDateTime().toLocalDate().minusDays(1);
@@ -51,7 +51,8 @@ public class ReportGenerationScheduler {
 
         int generated = 0;
         int notified = 0;
-        int failed = 0;
+        int generationFailed = 0;
+        int notificationFailed = 0;
 
         for (Long userId : targetUserIds) {
             try {
@@ -60,11 +61,23 @@ public class ReportGenerationScheduler {
                         .generate(user, reportDate);
                 if (result.generated()) {
                     generated++;
-                    notified += pushNotificationService
-                            .sendDailyReportNotification(userId, reportDate);
+                    try {
+                        notified += pushNotificationService
+                                .sendDailyReportNotification(
+                                        userId,
+                                        reportDate
+                                );
+                    } catch (RuntimeException e) {
+                        notificationFailed++;
+                        log.atWarn()
+                                .setCause(e)
+                                .addArgument(userId)
+                                .addArgument(reportDate)
+                                .log("Daily report notification failed. userId={}, reportDate={}");
+                    }
                 }
             } catch (RuntimeException e) {
-                failed++;
+                generationFailed++;
                 log.atWarn()
                         .setCause(e)
                         .addArgument(userId)
@@ -74,18 +87,19 @@ public class ReportGenerationScheduler {
         }
 
         log.info(
-                "Daily report scheduler completed. reportDate={}, targets={}, generated={}, notifications={}, failed={}",
+                "Daily report scheduler completed. reportDate={}, targets={}, generated={}, notifications={}, generationFailed={}, notificationFailed={}",
                 reportDate,
                 targetUserIds.size(),
                 generated,
                 notified,
-                failed
+                generationFailed,
+                notificationFailed
         );
     }
 
     @Scheduled(
             cron = "${app.report.scheduler.weekly-generation-cron:0 0 0 * * MON}",
-            zone = "${app.report.scheduler.zone:Asia/Seoul}"
+            zone = "Asia/Seoul"
     )
     public void generateWeeklyReports() {
         LocalDate currentMonday = currentDateTime().toLocalDate();
@@ -130,7 +144,7 @@ public class ReportGenerationScheduler {
 
     @Scheduled(
             cron = "${app.report.scheduler.weekly-notification-cron:0 * * * * MON}",
-            zone = "${app.report.scheduler.zone:Asia/Seoul}"
+            zone = "Asia/Seoul"
     )
     public void sendWeeklyReportNotifications() {
         LocalDateTime now = currentDateTime()
@@ -177,7 +191,7 @@ public class ReportGenerationScheduler {
 
     @Scheduled(
             cron = "${app.report.scheduler.weekly-notification-recovery-cron:0 * * * * *}",
-            zone = "${app.report.scheduler.zone:Asia/Seoul}"
+            zone = "Asia/Seoul"
     )
     public void recoverStaleWeeklyNotificationDeliveries() {
         LocalDateTime staleBefore = currentDateTime()

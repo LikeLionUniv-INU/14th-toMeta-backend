@@ -24,6 +24,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -106,6 +107,49 @@ class ReportGenerationSchedulerTest {
     }
 
     @Test
+    void dailyScheduler_continuesWithNextUserAfterGenerationFailure() {
+        LocalDate reportDate = LocalDate.of(2026, 8, 23);
+        User failedUser = User.builder().build();
+        User nextUser = User.builder().build();
+        when(dailyRecordRepository
+                .findDailyReportGenerationTargetUserIds(reportDate))
+                .thenReturn(List.of(1L, 2L));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(failedUser));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(nextUser));
+        when(dailyReportGenerationService.generate(failedUser, reportDate))
+                .thenThrow(new RuntimeException("generation failed"));
+        when(dailyReportGenerationService.generate(nextUser, reportDate))
+                .thenReturn(ReportGenerationResult.alreadyCompleted(null));
+
+        assertDoesNotThrow(scheduler::generateDailyReports);
+
+        verify(dailyReportGenerationService).generate(nextUser, reportDate);
+    }
+
+    @Test
+    void dailyScheduler_continuesWithNextUserAfterNotificationFailure() {
+        LocalDate reportDate = LocalDate.of(2026, 8, 23);
+        User firstUser = User.builder().build();
+        User nextUser = User.builder().build();
+        when(dailyRecordRepository
+                .findDailyReportGenerationTargetUserIds(reportDate))
+                .thenReturn(List.of(1L, 2L));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(firstUser));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(nextUser));
+        when(dailyReportGenerationService.generate(firstUser, reportDate))
+                .thenReturn(ReportGenerationResult.generated(null));
+        when(dailyReportGenerationService.generate(nextUser, reportDate))
+                .thenReturn(ReportGenerationResult.alreadyCompleted(null));
+        when(pushNotificationService
+                .sendDailyReportNotification(1L, reportDate))
+                .thenThrow(new RuntimeException("notification failed"));
+
+        assertDoesNotThrow(scheduler::generateDailyReports);
+
+        verify(dailyReportGenerationService).generate(nextUser, reportDate);
+    }
+
+    @Test
     void weeklyScheduler_usesPreviousMondayThroughSunday() {
         LocalDate weekStartDate = LocalDate.of(2026, 8, 17);
         LocalDate weekEndDate = LocalDate.of(2026, 8, 23);
@@ -124,6 +168,32 @@ class ReportGenerationSchedulerTest {
 
         verify(weeklyReportGenerationService)
                 .generate(user, weekStartDate);
+    }
+
+    @Test
+    void weeklyScheduler_continuesWithNextUserAfterGenerationFailure() {
+        LocalDate weekStartDate = LocalDate.of(2026, 8, 17);
+        LocalDate weekEndDate = LocalDate.of(2026, 8, 23);
+        User failedUser = User.builder().build();
+        User nextUser = User.builder().build();
+        when(weeklyReportRepository
+                .findWeeklyReportGenerationTargetUserIds(
+                        weekStartDate,
+                        weekEndDate
+                ))
+                .thenReturn(List.of(1L, 2L));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(failedUser));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(nextUser));
+        when(weeklyReportGenerationService
+                .generate(failedUser, weekStartDate))
+                .thenThrow(new RuntimeException("generation failed"));
+        when(weeklyReportGenerationService.generate(nextUser, weekStartDate))
+                .thenReturn(ReportGenerationResult.alreadyCompleted(null));
+
+        assertDoesNotThrow(scheduler::generateWeeklyReports);
+
+        verify(weeklyReportGenerationService)
+                .generate(nextUser, weekStartDate);
     }
 
     @Test

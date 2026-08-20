@@ -124,7 +124,8 @@ class ReportSchedulerRepositoryIntegrationTest {
         ));
         assertEquals(1, weeklyReportRepository.beginWeeklyNotificationDelivery(
                 report.getId(),
-                "attempt-1"
+                "attempt-1",
+                now
         ));
         assertEquals(0, weeklyReportRepository.claimWeeklyNotification(
                 report.getId(),
@@ -157,23 +158,40 @@ class ReportSchedulerRepositoryIntegrationTest {
                 .build();
         report.complete("summary", "solution");
         weeklyReportRepository.saveAndFlush(report);
-        LocalDateTime startedAt = LocalDateTime.of(2026, 8, 24, 10, 0);
+        LocalDateTime claimedAt = LocalDateTime.of(2026, 8, 24, 10, 0);
+        LocalDateTime deliveryStartedAt = claimedAt.plusMinutes(6);
 
         assertEquals(1, weeklyReportRepository.claimWeeklyNotification(
                 report.getId(),
                 "attempt-unknown",
-                startedAt,
-                startedAt.minusMinutes(5)
+                claimedAt,
+                claimedAt.minusMinutes(5)
         ));
         assertEquals(1, weeklyReportRepository.beginWeeklyNotificationDelivery(
                 report.getId(),
-                "attempt-unknown"
+                "attempt-unknown",
+                deliveryStartedAt
         ));
+        assertEquals(
+                0,
+                weeklyReportRepository
+                        .markStaleWeeklyNotificationDeliveriesUnknown(
+                                deliveryStartedAt.minusNanos(1)
+                        )
+        );
+        WeeklyReport sendingReport = weeklyReportRepository
+                .findById(report.getId())
+                .orElseThrow();
+        assertEquals("sending", sendingReport.getNotificationStatus());
+        assertEquals(
+                deliveryStartedAt,
+                sendingReport.getNotificationStartedAt()
+        );
         assertEquals(
                 1,
                 weeklyReportRepository
                         .markStaleWeeklyNotificationDeliveriesUnknown(
-                                startedAt.plusMinutes(5)
+                                deliveryStartedAt.plusMinutes(5)
                         )
         );
 
@@ -188,8 +206,8 @@ class ReportSchedulerRepositoryIntegrationTest {
         assertEquals(0, weeklyReportRepository.claimWeeklyNotification(
                 report.getId(),
                 "attempt-retry",
-                startedAt.plusMinutes(10),
-                startedAt.plusMinutes(5)
+                deliveryStartedAt.plusMinutes(10),
+                deliveryStartedAt.plusMinutes(5)
         ));
     }
 

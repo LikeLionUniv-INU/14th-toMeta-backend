@@ -4,14 +4,16 @@ import com.likelion.tometa.domain.report.entity.WeeklyReport;
 import com.likelion.tometa.domain.report.repository.WeeklyReportRepository;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.service.PushNotificationService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.anyString;
@@ -39,8 +41,20 @@ class WeeklyReportNotificationServiceTest {
     private WeeklyReportRepository weeklyReportRepository;
     @Mock
     private PushNotificationService pushNotificationService;
-    @InjectMocks
     private WeeklyReportNotificationService service;
+
+    @BeforeEach
+    void setUp() {
+        ZoneId koreaZone = ZoneId.of("Asia/Seoul");
+        service = new WeeklyReportNotificationService(
+                weeklyReportRepository,
+                pushNotificationService,
+                Clock.fixed(
+                        REQUESTED_AT.atZone(koreaZone).toInstant(),
+                        koreaZone
+                )
+        );
+    }
 
     @Test
     void send_claimsAndMarksNotificationSent() {
@@ -61,7 +75,8 @@ class WeeklyReportNotificationServiceTest {
                 .thenReturn(Optional.of(report));
         when(weeklyReportRepository.beginWeeklyNotificationDelivery(
                 eq(1L),
-                anyString()
+                anyString(),
+                eq(REQUESTED_AT)
         )).thenReturn(1);
         when(pushNotificationService.sendWeeklyReportNotification(
                 1L,
@@ -120,7 +135,8 @@ class WeeklyReportNotificationServiceTest {
                 .thenReturn(Optional.of(report));
         when(weeklyReportRepository.beginWeeklyNotificationDelivery(
                 eq(1L),
-                anyString()
+                anyString(),
+                eq(REQUESTED_AT)
         )).thenReturn(1);
         when(pushNotificationService.sendWeeklyReportNotification(
                 1L,
@@ -161,7 +177,8 @@ class WeeklyReportNotificationServiceTest {
                 .thenReturn(Optional.of(report));
         when(weeklyReportRepository.beginWeeklyNotificationDelivery(
                 eq(1L),
-                anyString()
+                anyString(),
+                eq(REQUESTED_AT)
         )).thenReturn(1);
         when(pushNotificationService.sendWeeklyReportNotification(
                 1L,

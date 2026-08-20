@@ -140,14 +140,16 @@ public interface WeeklyReportRepository extends JpaRepository<WeeklyReport, Long
     @Transactional
     @Query("""
             update WeeklyReport weeklyReport
-               set weeklyReport.notificationStatus = 'sending'
+               set weeklyReport.notificationStatus = 'sending',
+                   weeklyReport.notificationStartedAt = :deliveryStartedAt
              where weeklyReport.id = :reportId
                and weeklyReport.notificationStatus = 'claimed'
                and weeklyReport.notificationAttemptId = :attemptId
             """)
     int beginWeeklyNotificationDelivery(
             @Param("reportId") Long reportId,
-            @Param("attemptId") String attemptId
+            @Param("attemptId") String attemptId,
+            @Param("deliveryStartedAt") LocalDateTime deliveryStartedAt
     );
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)

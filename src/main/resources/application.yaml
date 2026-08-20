@@ -58,7 +58,6 @@ app:
 
   report:
     scheduler:
-      zone: Asia/Seoul
       daily-generation-cron: "0 0 7 * * *"
       weekly-generation-cron: "0 0 0 * * MON"
       weekly-notification-cron: "0 * * * * MON"
