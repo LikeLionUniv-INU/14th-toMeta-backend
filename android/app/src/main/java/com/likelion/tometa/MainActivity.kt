@@ -428,12 +428,20 @@ class MainActivity : ComponentActivity() {
                     return@addOnCompleteListener
                 }
 
+                if (!task.isSuccessful) {
+                    continuation.resumeWithException(
+                        task.exception ?: IllegalStateException("Firebase Installation ID 조회에 실패했습니다.")
+                    )
+                    return@addOnCompleteListener
+                }
+
                 val installationId = task.result
-                if (task.isSuccessful && !installationId.isNullOrBlank()) {
+
+                if (!installationId.isNullOrBlank()) {
                     continuation.resume(installationId)
                 } else {
                     continuation.resumeWithException(
-                        task.exception ?: IllegalStateException("Firebase Installation ID 조회에 실패했습니다.")
+                        IllegalStateException("Firebase Installation ID 조회에 실패했습니다.")
                     )
                 }
             }
