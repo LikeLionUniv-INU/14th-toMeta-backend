@@ -225,12 +225,16 @@ public class WeeklyReportService {
                 .map(date -> {
                     DailyHealthSummary summary = healthByDate.get(date);
 
+                    Integer menstrualCycleDay = summary == null
+                            ? null
+                            : summary.getMenstrualCycleDay();
+
                     return new WeeklyReportResponseDto.MenstrualCycle(
                             date,
-                            summary == null
+                            menstrualCycleDay,
+                            menstrualCycleDay == null
                                     ? null
-                                    : summary.getMenstrualCycleDay(),
-                            CYCLE_LENGTH
+                                    : CYCLE_LENGTH
                     );
                 })
                 .toList();
