@@ -8,6 +8,8 @@ import java.util.Optional;
 
 public interface PushTokenRepository extends JpaRepository<PushToken, Long> {
 
+    boolean existsByUser_Id(Long userId);
+
     Optional<PushToken> findByUserAndDeviceId(User user, String deviceId);
 
     Optional<PushToken> findByDeviceIdAndFirebaseInstallationId(String deviceId, String firebaseInstallationId);
