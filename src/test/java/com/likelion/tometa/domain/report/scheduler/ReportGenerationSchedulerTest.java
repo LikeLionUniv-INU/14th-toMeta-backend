@@ -20,7 +20,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -64,7 +64,10 @@ class ReportGenerationSchedulerTest {
                 weeklyReportGenerationService,
                 weeklyReportNotificationService,
                 pushNotificationService,
-                Clock.fixed(MONDAY_00_01_KST, ZoneOffset.UTC)
+                Clock.fixed(
+                        MONDAY_00_01_KST,
+                        ZoneId.of("Asia/Seoul")
+                )
         );
     }
 
@@ -102,6 +105,7 @@ class ReportGenerationSchedulerTest {
 
         scheduler.generateDailyReports();
 
+        verify(dailyReportGenerationService).generate(user, reportDate);
         verify(pushNotificationService, never())
                 .sendDailyReportNotification(any(), any());
     }
@@ -123,6 +127,10 @@ class ReportGenerationSchedulerTest {
 
         assertDoesNotThrow(scheduler::generateDailyReports);
 
+        verify(dailyReportGenerationService)
+                .generate(failedUser, reportDate);
+        verify(pushNotificationService, never())
+                .sendDailyReportNotification(1L, reportDate);
         verify(dailyReportGenerationService).generate(nextUser, reportDate);
     }
 
@@ -149,6 +157,10 @@ class ReportGenerationSchedulerTest {
 
         assertDoesNotThrow(scheduler::generateDailyReports);
 
+        verify(dailyReportGenerationService)
+                .generate(firstUser, reportDate);
+        verify(pushNotificationService)
+                .sendDailyReportNotification(1L, reportDate);
         verify(dailyReportGenerationService).generate(nextUser, reportDate);
         verify(pushNotificationService)
                 .sendDailyReportNotification(2L, reportDate);
@@ -197,6 +209,8 @@ class ReportGenerationSchedulerTest {
 
         assertDoesNotThrow(scheduler::generateWeeklyReports);
 
+        verify(weeklyReportGenerationService)
+                .generate(failedUser, weekStartDate);
         verify(weeklyReportGenerationService)
                 .generate(nextUser, weekStartDate);
     }
