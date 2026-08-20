@@ -49,7 +49,7 @@ public class FcmPushService {
         }
 
         int successCount = 0;
-        List<PushToken> invalidPushTokens = new ArrayList<>();
+        List<InvalidPushToken> invalidPushTokens = new ArrayList<>();
 
         for (PushToken pushToken : pushTokens) {
             Message.Builder messageBuilder = Message.builder()
@@ -84,7 +84,12 @@ public class FcmPushService {
             } catch (FirebaseMessagingException e) {
                 if (e.getMessagingErrorCode()
                         == MessagingErrorCode.UNREGISTERED) {
-                    invalidPushTokens.add(pushToken);
+                    invalidPushTokens.add(
+                            new InvalidPushToken(
+                                    pushToken.getId(),
+                                    pushToken.getFirebaseInstallationId()
+                            )
+                    );
                 }
 
                 log.warn(
@@ -97,16 +102,30 @@ public class FcmPushService {
             }
         }
 
-        if (!invalidPushTokens.isEmpty()) {
-            pushTokenRepository.deleteAll(invalidPushTokens);
+        int deletedCount = invalidPushTokens.stream()
+                .mapToInt(invalidPushToken ->
+                        pushTokenRepository.deleteByIdAndFirebaseInstallationId(
+                                invalidPushToken.id(),
+                                invalidPushToken.firebaseInstallationId()
+                        )
+                )
+                .sum();
 
+        if (!invalidPushTokens.isEmpty()) {
             log.info(
-                    "유효하지 않은 FCM 발송 대상 정리 완료. userId={}, count={}",
+                    "유효하지 않은 FCM 발송 대상 정리 완료. userId={}, targetCount={}, deletedCount={}",
                     userId,
-                    invalidPushTokens.size()
+                    invalidPushTokens.size(),
+                    deletedCount
             );
         }
 
         return successCount;
+    }
+
+    private record InvalidPushToken(
+            Long id,
+            String firebaseInstallationId
+    ) {
     }
 }
