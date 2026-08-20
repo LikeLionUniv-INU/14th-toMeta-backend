@@ -109,11 +109,13 @@ class CosmeticOptionServiceTest {
         assertEquals(2, result.cosmetics().size());
         CosmeticOptionResponseDto.CosmeticOption searchOption = result.cosmetics().get(0);
         assertEquals(12L, searchOption.userCosmeticId());
+        assertEquals("토리든 다이브인 세럼", searchOption.productName());
         assertEquals("토리든", searchOption.brandName());
         assertEquals(List.of("세럼", "보습", "수분", "히알루론산"), searchOption.tags());
 
         CosmeticOptionResponseDto.CosmeticOption manualOption = result.cosmetics().get(1);
         assertEquals(11L, manualOption.userCosmeticId());
+        assertEquals("진정 크림", manualOption.productName());
         assertNull(manualOption.brandName());
         assertEquals(List.of("cream", "시카", "수분", "진정"), manualOption.tags());
         verify(sessionUserResolver).resolve(SESSION_TOKEN);

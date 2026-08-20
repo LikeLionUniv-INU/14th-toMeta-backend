@@ -2,6 +2,7 @@ package com.likelion.tometa.domain.cosmetic.controller;
 
 import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
+import com.likelion.tometa.domain.cosmetic.dto.response.SearchedCosmeticCreateResponseDto;
 import com.likelion.tometa.domain.cosmetic.service.SearchedCosmeticRegistrationService;
 import com.likelion.tometa.domain.cosmetic.service.UserCosmeticService;
 import com.likelion.tometa.domain.user.code.UserErrorCode;
@@ -21,6 +22,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -68,6 +70,41 @@ class UserCosmeticControllerTest {
                           "code": "COMMON_200",
                           "message": "요청에 성공했습니다.",
                           "result": null
+                        }
+                        """));
+    }
+
+    @Test
+    void createSearchedCosmetic_returnsProductNameWithBrand() throws Exception {
+        when(searchedCosmeticRegistrationService.create(any(), eq("session-token")))
+                .thenReturn(new SearchedCosmeticCreateResponseDto(
+                        11L,
+                        "토리든 다이브인 세럼",
+                        "serum",
+                        java.util.List.of("세럼", "보습", "히알루론산")
+                ));
+
+        mockMvc.perform(post("/api/user-cosmetics/search-result")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(new Cookie("anonymous_session", "session-token"))
+                        .content("""
+                                {
+                                  "searchId": "search-id",
+                                  "itemId": 1
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": true,
+                          "code": "COMMON_200",
+                          "message": "요청에 성공했습니다.",
+                          "result": {
+                            "userCosmeticId": 11,
+                            "productName": "토리든 다이브인 세럼",
+                            "productType": "serum",
+                            "tags": ["세럼", "보습", "히알루론산"]
+                          }
                         }
                         """));
     }
