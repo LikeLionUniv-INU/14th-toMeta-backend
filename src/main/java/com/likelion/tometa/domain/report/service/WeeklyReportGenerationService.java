@@ -3,6 +3,8 @@ package com.likelion.tometa.domain.report.service;
 import com.likelion.tometa.domain.report.client.OpenAiWeeklyReportClient;
 import com.likelion.tometa.domain.report.dto.response.WeeklyReportGenerationResponseDto;
 import com.likelion.tometa.domain.report.support.WeeklyReportAiResult;
+import com.likelion.tometa.domain.report.support.ReportGenerationResult;
+import com.likelion.tometa.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -15,18 +17,20 @@ public class WeeklyReportGenerationService {
     private final WeeklyReportGenerationTransactionService transactionService;
     private final OpenAiWeeklyReportClient openAiWeeklyReportClient;
 
-    public WeeklyReportGenerationResponseDto generate(
-            LocalDate startDate,
-            String sessionToken
+    public ReportGenerationResult<WeeklyReportGenerationResponseDto> generate(
+            User user,
+            LocalDate startDate
     ) {
         WeeklyReportGenerationTransactionService.Preparation preparation =
                 transactionService.prepare(
-                        startDate,
-                        sessionToken
+                        user,
+                        startDate
                 );
 
         if (!preparation.requiresGeneration()) {
-            return preparation.completedResponse();
+            return ReportGenerationResult.alreadyCompleted(
+                    preparation.completedResponse()
+            );
         }
 
         try {
@@ -35,10 +39,12 @@ public class WeeklyReportGenerationService {
                             preparation.context()
                     );
 
-            return transactionService.complete(
-                    preparation.reportId(),
-                    preparation.generationStartedAt(),
-                    aiResult
+            return ReportGenerationResult.generated(
+                    transactionService.complete(
+                            preparation.reportId(),
+                            preparation.generationStartedAt(),
+                            aiResult
+                    )
             );
         } catch (RuntimeException e) {
             transactionService.reset(

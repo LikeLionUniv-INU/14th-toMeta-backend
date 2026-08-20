@@ -36,7 +36,7 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
-        assertEquals(10, successfulMigrationCount(jdbcUrl));
+        assertEquals(12, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -58,7 +58,7 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
-        assertEquals(10, successfulMigrationCount(jdbcUrl));
+        assertEquals(12, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -97,7 +97,7 @@ class FlywayMigrationIntegrationTest {
                                 + "and created_at = timestamp '2025-01-02 03:04:05'"
                 )
         );
-        assertEquals(10, successfulMigrationCount(jdbcUrl));
+        assertEquals(12, successfulMigrationCount(jdbcUrl));
     }
 
     @Test

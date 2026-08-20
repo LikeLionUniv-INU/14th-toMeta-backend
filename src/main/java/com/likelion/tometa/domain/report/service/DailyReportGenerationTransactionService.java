@@ -14,7 +14,6 @@ import com.likelion.tometa.domain.report.repository.DailyReportRepository;
 import com.likelion.tometa.domain.report.support.DailyReportAiResult;
 import com.likelion.tometa.domain.report.support.DailyReportGenerationContext;
 import com.likelion.tometa.domain.user.entity.User;
-import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
 import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -40,7 +39,6 @@ public class DailyReportGenerationTransactionService {
     private static final String NIGHT = "night";
     private static final int CYCLE_LENGTH = 28;
 
-    private final AnonymousSessionUserResolver sessionUserResolver;
     private final DailyRecordRepository dailyRecordRepository;
     private final DailyRecordCosmeticRepository dailyRecordCosmeticRepository;
     private final DailyHealthSummaryRepository dailyHealthSummaryRepository;
@@ -48,9 +46,7 @@ public class DailyReportGenerationTransactionService {
     private final JsonMapper jsonMapper;
 
     @Transactional
-    public Preparation prepare(LocalDate date, String sessionToken) {
-        User user = sessionUserResolver.resolve(sessionToken);
-
+    public Preparation prepare(User user, LocalDate date) {
         DailyRecord dailyRecord = dailyRecordRepository
                 .findByUserAndRecordDateForUpdate(user, date)
                 .orElseThrow(() -> new GeneralException(
