@@ -33,7 +33,31 @@ public record WeeklyReportGenerationContext(
             Integer exerciseDuration,
             Integer totalCaloriesBurned,
             Integer menstrualCycleDay,
+            Integer menstrualCycleLength,
             BigDecimal avgSpo2
     ) {
+
+        private static final int CYCLE_LENGTH = 28;
+
+        public HealthSummary(
+                Integer sleepMinutes,
+                BigDecimal skinTemperature,
+                Integer exerciseDuration,
+                Integer totalCaloriesBurned,
+                Integer menstrualCycleDay,
+                BigDecimal avgSpo2
+        ) {
+            this(
+                    sleepMinutes,
+                    skinTemperature,
+                    exerciseDuration,
+                    totalCaloriesBurned,
+                    menstrualCycleDay,
+                    menstrualCycleDay == null
+                            ? null
+                            : CYCLE_LENGTH,
+                    avgSpo2
+            );
+        }
     }
 }
