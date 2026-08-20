@@ -4,15 +4,27 @@ import com.likelion.tometa.domain.user.entity.PushToken;
 import com.likelion.tometa.domain.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface PushTokenRepository extends JpaRepository<PushToken, Long> {
 
     boolean existsByUser_Id(Long userId);
 
-    Optional<PushToken> findByUserAndDeviceId(User user, String deviceId);
+    List<PushToken> findAllByUser_Id(Long userId);
 
-    Optional<PushToken> findByDeviceIdAndFirebaseInstallationId(String deviceId, String firebaseInstallationId);
+    Optional<PushToken> findByUserAndDeviceId(
+            User user,
+            String deviceId
+    );
 
-    Optional<PushToken> findByIdAndUser(Long id, User user);
+    Optional<PushToken> findByDeviceIdAndFirebaseInstallationId(
+            String deviceId,
+            String firebaseInstallationId
+    );
+
+    Optional<PushToken> findByIdAndUser(
+            Long id,
+            User user
+    );
 }
