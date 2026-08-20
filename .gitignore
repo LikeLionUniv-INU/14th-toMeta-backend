@@ -49,3 +49,6 @@ captures/
 .cxx/
 *.apk
 *.aab
+
+### Firebase Admin ###
+/secrets/

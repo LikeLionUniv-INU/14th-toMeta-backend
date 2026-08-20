@@ -43,6 +43,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      FIREBASE_ENABLED: ${FIREBASE_ENABLED:-false}
 
 volumes:
   mysql-data:
