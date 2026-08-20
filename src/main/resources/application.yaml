@@ -52,3 +52,6 @@ app:
     openai:
       api-key: ${OPENAI_API_KEY:}
       model: ${OPENAI_MODEL:gpt-5-mini}
+
+  firebase:
+    enabled: ${FIREBASE_ENABLED:false}
