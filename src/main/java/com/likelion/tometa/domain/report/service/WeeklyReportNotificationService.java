@@ -4,12 +4,15 @@ import com.likelion.tometa.domain.report.entity.WeeklyReport;
 import com.likelion.tometa.domain.report.repository.WeeklyReportRepository;
 import com.likelion.tometa.domain.user.service.PushNotificationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.UUID;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class WeeklyReportNotificationService {
@@ -22,9 +25,11 @@ public class WeeklyReportNotificationService {
     public NotificationResult send(Long reportId, LocalDateTime requestedAt) {
         LocalDateTime startedAt = requestedAt.truncatedTo(ChronoUnit.MICROS);
         LocalDateTime staleBefore = startedAt.minus(DELIVERY_TIMEOUT);
+        String attemptId = UUID.randomUUID().toString();
 
         int claimed = weeklyReportRepository.claimWeeklyNotification(
                 reportId,
+                attemptId,
                 startedAt,
                 staleBefore
         );
@@ -32,10 +37,18 @@ public class WeeklyReportNotificationService {
             return NotificationResult.skipped();
         }
 
+        boolean deliveryStarted = false;
         try {
             WeeklyReport weeklyReport = weeklyReportRepository
                     .findByIdWithUser(reportId)
                     .orElseThrow();
+
+            int started = weeklyReportRepository
+                    .beginWeeklyNotificationDelivery(reportId, attemptId);
+            if (started == 0) {
+                return NotificationResult.skipped();
+            }
+            deliveryStarted = true;
 
             int successCount = pushNotificationService
                     .sendWeeklyReportNotification(
@@ -43,17 +56,30 @@ public class WeeklyReportNotificationService {
                             weeklyReport.getWeekStartDate()
                     );
 
-            weeklyReportRepository.markWeeklyNotificationSent(
+            int markedSent = weeklyReportRepository.markWeeklyNotificationSent(
                     reportId,
-                    startedAt,
+                    attemptId,
                     requestedAt
             );
+            if (markedSent == 0) {
+                throw new IllegalStateException(
+                        "Weekly notification completion was not persisted"
+                );
+            }
             return NotificationResult.sent(successCount);
         } catch (RuntimeException e) {
-            weeklyReportRepository.resetWeeklyNotification(
-                    reportId,
-                    startedAt
-            );
+            if (!deliveryStarted) {
+                weeklyReportRepository.resetWeeklyNotificationClaim(
+                        reportId,
+                        attemptId
+                );
+            } else {
+                log.atError()
+                        .setCause(e)
+                        .addArgument(reportId)
+                        .addArgument(attemptId)
+                        .log("Weekly notification delivery outcome is unknown. reportId={}, attemptId={}");
+            }
             throw e;
         }
     }

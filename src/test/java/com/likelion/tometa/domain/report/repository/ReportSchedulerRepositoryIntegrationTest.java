@@ -112,17 +112,29 @@ class ReportSchedulerRepositoryIntegrationTest {
         );
         assertEquals(1, weeklyReportRepository.claimWeeklyNotification(
                 report.getId(),
+                "attempt-1",
                 now,
                 now.minusMinutes(5)
         ));
         assertEquals(0, weeklyReportRepository.claimWeeklyNotification(
                 report.getId(),
+                "attempt-2",
                 now.plusMinutes(1),
                 now.minusMinutes(4)
         ));
+        assertEquals(1, weeklyReportRepository.beginWeeklyNotificationDelivery(
+                report.getId(),
+                "attempt-1"
+        ));
+        assertEquals(0, weeklyReportRepository.claimWeeklyNotification(
+                report.getId(),
+                "attempt-3",
+                now.plusMinutes(10),
+                now.plusMinutes(5)
+        ));
         assertEquals(1, weeklyReportRepository.markWeeklyNotificationSent(
                 report.getId(),
-                now,
+                "attempt-1",
                 now
         ));
         assertEquals(

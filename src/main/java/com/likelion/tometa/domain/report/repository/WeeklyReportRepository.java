@@ -90,7 +90,7 @@ public interface WeeklyReportRepository extends JpaRepository<WeeklyReport, Long
               and (
                     weeklyReport.notificationStatus = 'pending'
                     or (
-                        weeklyReport.notificationStatus = 'sending'
+                        weeklyReport.notificationStatus = 'claimed'
                         and weeklyReport.notificationStartedAt <= :staleBefore
                     )
               )
@@ -116,22 +116,38 @@ public interface WeeklyReportRepository extends JpaRepository<WeeklyReport, Long
     @Transactional
     @Query("""
             update WeeklyReport weeklyReport
-               set weeklyReport.notificationStatus = 'sending',
-                   weeklyReport.notificationStartedAt = :startedAt
+               set weeklyReport.notificationStatus = 'claimed',
+                   weeklyReport.notificationStartedAt = :startedAt,
+                   weeklyReport.notificationAttemptId = :attemptId
              where weeklyReport.id = :reportId
                and weeklyReport.reportStatus = 'completed'
                and (
                     weeklyReport.notificationStatus = 'pending'
                     or (
-                        weeklyReport.notificationStatus = 'sending'
+                        weeklyReport.notificationStatus = 'claimed'
                         and weeklyReport.notificationStartedAt <= :staleBefore
                     )
                )
             """)
     int claimWeeklyNotification(
             @Param("reportId") Long reportId,
+            @Param("attemptId") String attemptId,
             @Param("startedAt") LocalDateTime startedAt,
             @Param("staleBefore") LocalDateTime staleBefore
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            update WeeklyReport weeklyReport
+               set weeklyReport.notificationStatus = 'sending'
+             where weeklyReport.id = :reportId
+               and weeklyReport.notificationStatus = 'claimed'
+               and weeklyReport.notificationAttemptId = :attemptId
+            """)
+    int beginWeeklyNotificationDelivery(
+            @Param("reportId") Long reportId,
+            @Param("attemptId") String attemptId
     );
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
@@ -143,11 +159,11 @@ public interface WeeklyReportRepository extends JpaRepository<WeeklyReport, Long
                    weeklyReport.notificationSentAt = :sentAt
              where weeklyReport.id = :reportId
                and weeklyReport.notificationStatus = 'sending'
-               and weeklyReport.notificationStartedAt = :startedAt
+               and weeklyReport.notificationAttemptId = :attemptId
             """)
     int markWeeklyNotificationSent(
             @Param("reportId") Long reportId,
-            @Param("startedAt") LocalDateTime startedAt,
+            @Param("attemptId") String attemptId,
             @Param("sentAt") LocalDateTime sentAt
     );
 
@@ -156,13 +172,14 @@ public interface WeeklyReportRepository extends JpaRepository<WeeklyReport, Long
     @Query("""
             update WeeklyReport weeklyReport
                set weeklyReport.notificationStatus = 'pending',
-                   weeklyReport.notificationStartedAt = null
+                   weeklyReport.notificationStartedAt = null,
+                   weeklyReport.notificationAttemptId = null
              where weeklyReport.id = :reportId
-               and weeklyReport.notificationStatus = 'sending'
-               and weeklyReport.notificationStartedAt = :startedAt
+               and weeklyReport.notificationStatus = 'claimed'
+               and weeklyReport.notificationAttemptId = :attemptId
             """)
-    int resetWeeklyNotification(
+    int resetWeeklyNotificationClaim(
             @Param("reportId") Long reportId,
-            @Param("startedAt") LocalDateTime startedAt
+            @Param("attemptId") String attemptId
     );
 }
