@@ -51,6 +51,7 @@ dependencies {
     implementation("androidx.health.connect:connect-client:1.2.0-alpha04")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.webkit:webkit:1.14.0")
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 
     implementation(libs.kotlinx.serialization.json)
 
@@ -62,6 +63,7 @@ dependencies {
     implementation(libs.firebase.messaging)
 
     testImplementation(libs.junit)
+
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

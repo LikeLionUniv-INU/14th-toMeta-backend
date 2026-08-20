@@ -31,6 +31,7 @@ import androidx.webkit.WebViewFeature
 import com.likelion.tometa.healthconnect.HealthConnectManager
 import com.likelion.tometa.healthconnect.HealthConnectPermissions
 import com.likelion.tometa.healthconnect.HealthConnectReader
+import com.likelion.tometa.healthconnect.background.HealthSyncScheduler
 import com.likelion.tometa.healthconnect.device.DeviceIdProvider
 import com.likelion.tometa.healthconnect.network.HealthConnectApiClient
 import com.likelion.tometa.healthconnect.network.HealthConnectRepository
@@ -45,11 +46,20 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     companion object {
-        private const val WEB_URL = "https://14th-to-meta-frontend.vercel.app"
-        private const val WEB_VIEW_STATE_KEY = "web_view_state"
-        private const val WEB_VIEW_URL_KEY = "web_view_url"
-        private const val ANONYMOUS_SESSION_COOKIE_NAME = "anonymous_session"
-        private const val MAX_WEB_VIEW_STATE_BYTES = 512 * 1024
+        private const val WEB_URL =
+            "https://14th-to-meta-frontend.vercel.app"
+
+        private const val WEB_VIEW_STATE_KEY =
+            "web_view_state"
+
+        private const val WEB_VIEW_URL_KEY =
+            "web_view_url"
+
+        private const val ANONYMOUS_SESSION_COOKIE_NAME =
+            "anonymous_session"
+
+        private const val MAX_WEB_VIEW_STATE_BYTES =
+            512 * 1024
     }
 
     private var currentWebView: WebView? = null
@@ -57,31 +67,41 @@ class MainActivity : ComponentActivity() {
     private var pendingSyncReplyProxy: JavaScriptReplyProxy? = null
     private var healthConnectJob: Job? = null
     private var healthSyncJob: Job? = null
+
     private lateinit var healthConnectManager: HealthConnectManager
+    private lateinit var healthDeviceTokenStore: HealthDeviceTokenStore
     private lateinit var healthConnectRepository: HealthConnectRepository
     private lateinit var healthSyncCoordinator: HealthSyncCoordinator
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
+        super.onCreate(
+            savedInstanceState
+        )
 
         healthConnectManager =
             HealthConnectManager(
                 applicationContext
             )
 
+        healthDeviceTokenStore =
+            HealthDeviceTokenStore(
+                applicationContext
+            )
+
         healthConnectRepository =
             HealthConnectRepository(
-                api = HealthConnectApiClient.create(
-                    "$WEB_URL/"
-                ),
+                api =
+                    HealthConnectApiClient.create(
+                        "$WEB_URL/"
+                    ),
                 deviceIdProvider =
                     DeviceIdProvider(
                         applicationContext
                     ),
                 healthDeviceTokenStore =
-                    HealthDeviceTokenStore(
-                        applicationContext
-                    )
+                    healthDeviceTokenStore
             )
 
         healthSyncCoordinator =
@@ -99,16 +119,22 @@ class MainActivity : ComponentActivity() {
         CookieManager.getInstance()
             .setAcceptCookie(true)
 
+        lifecycleScope.launch {
+            updateBackgroundSyncSchedule()
+        }
+
         setContent {
             ToMetaWebView(
                 savedWebViewState =
-                    savedInstanceState?.getBundle(
-                        WEB_VIEW_STATE_KEY
-                    ),
+                    savedInstanceState
+                        ?.getBundle(
+                            WEB_VIEW_STATE_KEY
+                        ),
                 savedUrl =
-                    savedInstanceState?.getString(
-                        WEB_VIEW_URL_KEY
-                    )
+                    savedInstanceState
+                        ?.getString(
+                            WEB_VIEW_URL_KEY
+                        )
             )
         }
     }
@@ -162,7 +188,9 @@ class MainActivity : ComponentActivity() {
         uri: Uri
     ): Boolean {
         val trustedUri =
-            Uri.parse(WEB_URL)
+            Uri.parse(
+                WEB_URL
+            )
 
         return uri.scheme.equals(
             trustedUri.scheme,
@@ -199,12 +227,93 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private suspend fun updateBackgroundSyncSchedule() {
+        val hasToken =
+            try {
+                !healthDeviceTokenStore
+                    .getToken()
+                    .isNullOrBlank()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                HealthSyncScheduler.cancel(
+                    applicationContext
+                )
+
+                return
+            }
+
+        if (!hasToken) {
+            HealthSyncScheduler.cancel(
+                applicationContext
+            )
+
+            return
+        }
+
+        /*
+         * Health Connect Provider가 업데이트 중이거나 일시적으로
+         * unavailable인 경우 기존 스케줄까지 제거하지 않는다.
+         */
+        if (!healthConnectManager.isAvailable()) {
+            return
+        }
+
+        if (
+            !healthConnectManager
+                .isBackgroundReadAvailable()
+        ) {
+            HealthSyncScheduler.cancel(
+                applicationContext
+            )
+
+            return
+        }
+
+        val hasRequiredPermissions =
+            try {
+                healthConnectManager
+                    .hasAllPermissions()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                return
+            }
+
+        val hasBackgroundPermission =
+            try {
+                healthConnectManager
+                    .hasBackgroundReadPermission()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                return
+            }
+
+        if (
+            !hasRequiredPermissions ||
+            !hasBackgroundPermission
+        ) {
+            HealthSyncScheduler.cancel(
+                applicationContext
+            )
+
+            return
+        }
+
+        HealthSyncScheduler.schedule(
+            applicationContext
+        )
+    }
+
     private fun connectHealthDevice(
         replyProxy: JavaScriptReplyProxy
     ) {
         val cookieHeader =
             CookieManager.getInstance()
-                .getCookie(WEB_URL)
+                .getCookie(
+                    WEB_URL
+                )
 
         val anonymousSessionValue =
             cookieHeader
@@ -250,6 +359,8 @@ class MainActivity : ComponentActivity() {
                         healthConnectRepository.connect(
                             cookieHeader
                         )
+
+                        updateBackgroundSyncSchedule()
 
                         true
                     } catch (e: CancellationException) {
@@ -339,6 +450,8 @@ class MainActivity : ComponentActivity() {
                             healthSyncCoordinator
                                 .syncRecent()
 
+                            updateBackgroundSyncSchedule()
+
                             HealthConnectWebBridge
                                 .RESULT_SYNC_SUCCESS
                         }
@@ -403,7 +516,26 @@ class MainActivity : ComponentActivity() {
             )
         }
 
-        val permissionLauncher =
+        /*
+         * Background 권한은 서비스 필수 권한이 아니므로
+         * 사용자가 거부해도 서버 연결 자체는 계속 진행한다.
+         */
+        val backgroundPermissionLauncher =
+            rememberLauncherForActivityResult(
+                contract =
+                    PermissionController
+                        .createRequestPermissionResultContract()
+            ) {
+                val replyProxy =
+                    pendingPermissionReplyProxy
+                        ?: return@rememberLauncherForActivityResult
+
+                connectHealthDevice(
+                    replyProxy
+                )
+            }
+
+        val foregroundPermissionLauncher =
             rememberLauncherForActivityResult(
                 contract =
                     PermissionController
@@ -412,22 +544,53 @@ class MainActivity : ComponentActivity() {
 
                 val replyProxy =
                     pendingPermissionReplyProxy
+                        ?: return@rememberLauncherForActivityResult
 
-                if (replyProxy != null) {
-                    val allGranted =
-                        grantedPermissions.containsAll(
-                            HealthConnectPermissions.READ_PERMISSIONS
+                val allGranted =
+                    grantedPermissions.containsAll(
+                        HealthConnectPermissions.READ_PERMISSIONS
+                    )
+
+                if (!allGranted) {
+                    runCatching {
+                        replyProxy.postMessage(
+                            HealthConnectWebBridge.RESULT_DENIED
                         )
+                    }
 
-                    if (!allGranted) {
-                        runCatching {
-                            replyProxy.postMessage(
-                                HealthConnectWebBridge.RESULT_DENIED
-                            )
+                    pendingPermissionReplyProxy =
+                        null
+
+                    return@rememberLauncherForActivityResult
+                }
+
+                lifecycleScope.launch {
+                    val shouldRequestBackgroundPermission =
+                        try {
+                            healthConnectManager
+                                .isBackgroundReadAvailable() &&
+                                    !healthConnectManager
+                                        .hasBackgroundReadPermission()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            false
                         }
 
-                        pendingPermissionReplyProxy =
-                            null
+                    if (
+                        pendingPermissionReplyProxy !==
+                        replyProxy
+                    ) {
+                        return@launch
+                    }
+
+                    if (
+                        shouldRequestBackgroundPermission
+                    ) {
+                        backgroundPermissionLauncher.launch(
+                            HealthConnectPermissions
+                                .BACKGROUND_READ_PERMISSIONS
+                        )
                     } else {
                         connectHealthDevice(
                             replyProxy
@@ -480,7 +643,7 @@ class MainActivity : ComponentActivity() {
                                     pendingPermissionReplyProxy =
                                         replyProxy
 
-                                    permissionLauncher.launch(
+                                    foregroundPermissionLauncher.launch(
                                         HealthConnectPermissions.READ_PERMISSIONS
                                     )
                                 }
@@ -510,9 +673,13 @@ class MainActivity : ComponentActivity() {
                                     url != null &&
                                     runCatching {
                                         isTrustedUrl(
-                                            Uri.parse(url)
+                                            Uri.parse(
+                                                url
+                                            )
                                         )
-                                    }.getOrDefault(false)
+                                    }.getOrDefault(
+                                        false
+                                    )
                                 ) {
                                     view.evaluateJavascript(
                                         """
@@ -583,11 +750,12 @@ class MainActivity : ComponentActivity() {
                         }
 
                     val restored =
-                        savedWebViewState?.let {
-                            restoreState(
-                                it
-                            )
-                        } != null
+                        savedWebViewState
+                            ?.let {
+                                restoreState(
+                                    it
+                                )
+                            } != null
 
                     if (!restored) {
                         val urlToLoad =
