@@ -39,8 +39,8 @@ retrofit-kotlinx-serialization = { group = "com.squareup.retrofit2", name = "con
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
-
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
+firebase-installations = { module = "com.google.firebase:firebase-installations" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -1,10 +1,13 @@
 package com.likelion.tometa
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
@@ -15,6 +18,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,11 +27,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.google.android.gms.tasks.Task
+import com.google.firebase.installations.FirebaseInstallations
+import com.google.firebase.messaging.FirebaseMessaging
 import com.likelion.tometa.config.ToMetaEndpoint
 import com.likelion.tometa.healthconnect.HealthConnectManager
 import com.likelion.tometa.healthconnect.HealthConnectPermissions
@@ -39,10 +48,17 @@ import com.likelion.tometa.healthconnect.network.HealthConnectRepository
 import com.likelion.tometa.healthconnect.sync.HealthSyncCoordinator
 import com.likelion.tometa.healthconnect.sync.HealthSyncRequestFactory
 import com.likelion.tometa.healthconnect.token.HealthDeviceTokenStore
+import com.likelion.tometa.push.FirebaseInstallationIdStore
+import com.likelion.tometa.push.PushNotificationChannel
+import com.likelion.tometa.push.network.PushTokenApiClient
+import com.likelion.tometa.push.network.PushTokenRepository
 import com.likelion.tometa.webview.HealthConnectWebBridge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class MainActivity : ComponentActivity() {
 
@@ -56,29 +72,40 @@ class MainActivity : ComponentActivity() {
     private var currentWebView: WebView? = null
     private var pendingPermissionReplyProxy: JavaScriptReplyProxy? = null
     private var pendingSyncReplyProxy: JavaScriptReplyProxy? = null
+    private var pendingPushPermissionReplyProxy: JavaScriptReplyProxy? = null
     private var healthConnectJob: Job? = null
     private var healthSyncJob: Job? = null
+    private var pushRegistrationJob: Job? = null
+
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var healthDeviceTokenStore: HealthDeviceTokenStore
     private lateinit var healthConnectRepository: HealthConnectRepository
     private lateinit var healthSyncCoordinator: HealthSyncCoordinator
+    private lateinit var pushTokenRepository: PushTokenRepository
+    private lateinit var deviceIdProvider: DeviceIdProvider
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        deviceIdProvider = DeviceIdProvider(applicationContext)
         healthConnectManager = HealthConnectManager(applicationContext)
         healthDeviceTokenStore = HealthDeviceTokenStore(applicationContext)
         healthConnectRepository = HealthConnectRepository(
             api = HealthConnectApiClient.create(ToMetaEndpoint.API_BASE_URL),
-            deviceIdProvider = DeviceIdProvider(applicationContext),
+            deviceIdProvider = deviceIdProvider,
             healthDeviceTokenStore = healthDeviceTokenStore
         )
         healthSyncCoordinator = HealthSyncCoordinator(
             requestFactory = HealthSyncRequestFactory(HealthConnectReader(healthConnectManager)),
             healthConnectRepository = healthConnectRepository
         )
+        pushTokenRepository = PushTokenRepository(
+            api = PushTokenApiClient.create(ToMetaEndpoint.API_BASE_URL),
+            deviceIdProvider = deviceIdProvider
+        )
 
         CookieManager.getInstance().setAcceptCookie(true)
+        PushNotificationChannel.ensureCreated(applicationContext)
 
         lifecycleScope.launch {
             updateBackgroundSyncScheduleSafely()
@@ -125,6 +152,22 @@ class MainActivity : ComponentActivity() {
             context.startActivity(intent)
         } catch (_: ActivityNotFoundException) {
             // 처리 가능한 앱이 없으면 현재 WebView 화면 유지
+        }
+    }
+
+    private fun getAnonymousSessionCookieHeader(): String? {
+        val cookieHeader = CookieManager.getInstance().getCookie(ToMetaEndpoint.WEB_URL)
+        val anonymousSessionValue = cookieHeader
+            ?.split(";")
+            ?.map { it.trim() }
+            ?.firstOrNull { it.substringBefore("=") == ANONYMOUS_SESSION_COOKIE_NAME }
+            ?.substringAfter("=", missingDelimiterValue = "")
+            ?.trim()
+
+        return if (cookieHeader.isNullOrBlank() || anonymousSessionValue.isNullOrBlank()) {
+            null
+        } else {
+            cookieHeader
         }
     }
 
@@ -191,15 +234,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun connectHealthDevice(replyProxy: JavaScriptReplyProxy) {
-        val cookieHeader = CookieManager.getInstance().getCookie(ToMetaEndpoint.WEB_URL)
-        val anonymousSessionValue = cookieHeader
-            ?.split(";")
-            ?.map { it.trim() }
-            ?.firstOrNull { it.substringBefore("=") == ANONYMOUS_SESSION_COOKIE_NAME }
-            ?.substringAfter("=", missingDelimiterValue = "")
-            ?.trim()
+        val cookieHeader = getAnonymousSessionCookieHeader()
 
-        if (cookieHeader.isNullOrBlank() || anonymousSessionValue.isNullOrBlank()) {
+        if (cookieHeader == null) {
             runCatching {
                 replyProxy.postMessage(HealthConnectWebBridge.RESULT_SESSION_MISSING)
             }
@@ -257,7 +294,9 @@ class MainActivity : ComponentActivity() {
             pendingPermissionReplyProxy != null ||
             healthConnectJob?.isActive == true ||
             pendingSyncReplyProxy != null ||
-            healthSyncJob?.isActive == true
+            healthSyncJob?.isActive == true ||
+            pendingPushPermissionReplyProxy != null ||
+            pushRegistrationJob?.isActive == true
         ) {
             runCatching {
                 replyProxy.postMessage(HealthConnectWebBridge.RESULT_SYNC_BUSY)
@@ -309,11 +348,130 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun registerPushNotification(replyProxy: JavaScriptReplyProxy) {
+        val cookieHeader = getAnonymousSessionCookieHeader()
+
+        if (cookieHeader == null) {
+            completePushRequest(replyProxy, HealthConnectWebBridge.RESULT_UNAVAILABLE)
+            return
+        }
+
+        val job = lifecycleScope.launch {
+            val result = try {
+                FirebaseMessaging.getInstance().register().awaitCompletion()
+                val installationId = getFirebaseInstallationId()
+
+                if (!FirebaseInstallationIdStore(applicationContext).save(installationId)) {
+                    throw IllegalStateException("Firebase Installation ID 저장에 실패했습니다.")
+                }
+
+                pushTokenRepository.register(
+                    cookieHeader = cookieHeader,
+                    firebaseInstallationId = installationId
+                )
+
+                HealthConnectWebBridge.RESULT_GRANTED
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                HealthConnectWebBridge.RESULT_UNAVAILABLE
+            }
+
+            completePushRequest(replyProxy, result)
+        }
+
+        pushRegistrationJob = job
+
+        job.invokeOnCompletion {
+            if (pushRegistrationJob === job) {
+                pushRegistrationJob = null
+            }
+        }
+    }
+
+    private fun completePushRequest(replyProxy: JavaScriptReplyProxy, result: String) {
+        if (pendingPushPermissionReplyProxy !== replyProxy) {
+            return
+        }
+
+        runCatching {
+            replyProxy.postMessage(result)
+        }
+
+        if (pendingPushPermissionReplyProxy === replyProxy) {
+            pendingPushPermissionReplyProxy = null
+        }
+    }
+
+    private suspend fun Task<*>.awaitCompletion() {
+        suspendCancellableCoroutine<Unit> { continuation ->
+            addOnCompleteListener { task ->
+                if (!continuation.isActive) {
+                    return@addOnCompleteListener
+                }
+
+                if (task.isSuccessful) {
+                    continuation.resume(Unit)
+                } else {
+                    continuation.resumeWithException(
+                        task.exception ?: IllegalStateException("Firebase 등록에 실패했습니다.")
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun getFirebaseInstallationId(): String {
+        return suspendCancellableCoroutine { continuation ->
+            FirebaseInstallations.getInstance().id.addOnCompleteListener { task ->
+                if (!continuation.isActive) {
+                    return@addOnCompleteListener
+                }
+
+                if (!task.isSuccessful) {
+                    continuation.resumeWithException(
+                        task.exception ?: IllegalStateException("Firebase Installation ID 조회에 실패했습니다.")
+                    )
+                    return@addOnCompleteListener
+                }
+
+                val installationId = task.result
+
+                if (!installationId.isNullOrBlank()) {
+                    continuation.resume(installationId)
+                } else {
+                    continuation.resumeWithException(
+                        IllegalStateException("Firebase Installation ID 조회에 실패했습니다.")
+                    )
+                }
+            }
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     @Composable
     private fun ToMetaWebView(savedWebViewState: Bundle?, savedUrl: String?) {
         var webView by remember { mutableStateOf<WebView?>(null) }
         var canGoBack by remember { mutableStateOf(false) }
+
+        val pushPermissionLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            val replyProxy = pendingPushPermissionReplyProxy
+                ?: return@rememberLauncherForActivityResult
+
+            if (!granted) {
+                completePushRequest(replyProxy, HealthConnectWebBridge.RESULT_DENIED)
+                return@rememberLauncherForActivityResult
+            }
+
+            if (!NotificationManagerCompat.from(this@MainActivity).areNotificationsEnabled()) {
+                completePushRequest(replyProxy, HealthConnectWebBridge.RESULT_DENIED)
+                return@rememberLauncherForActivityResult
+            }
+
+            registerPushNotification(replyProxy)
+        }
 
         /*
          * Background 권한은 필수 권한이 아니므로
@@ -443,7 +601,10 @@ class MainActivity : ComponentActivity() {
                         trustedOrigin = ToMetaEndpoint.WEB_URL,
                         healthConnectManager = healthConnectManager,
                         onRequestPermissions = { replyProxy ->
-                            if (pendingPermissionReplyProxy != null) {
+                            if (
+                                pendingPermissionReplyProxy != null ||
+                                pendingPushPermissionReplyProxy != null
+                            ) {
                                 replyProxy.postMessage(HealthConnectWebBridge.RESULT_BUSY)
                             } else {
                                 pendingPermissionReplyProxy = replyProxy
@@ -454,6 +615,39 @@ class MainActivity : ComponentActivity() {
                         },
                         onRequestSync = { replyProxy ->
                             syncHealthData(replyProxy)
+                        },
+                        onRequestPushPermission = { replyProxy ->
+                            if (
+                                pendingPermissionReplyProxy != null ||
+                                pendingPushPermissionReplyProxy != null
+                            ) {
+                                replyProxy.postMessage(HealthConnectWebBridge.RESULT_BUSY)
+                            } else {
+                                pendingPushPermissionReplyProxy = replyProxy
+
+                                if (
+                                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    ContextCompat.checkSelfPermission(
+                                        this@MainActivity,
+                                        Manifest.permission.POST_NOTIFICATIONS
+                                    ) != PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    pushPermissionLauncher.launch(
+                                        Manifest.permission.POST_NOTIFICATIONS
+                                    )
+                                } else if (
+                                    !NotificationManagerCompat
+                                        .from(this@MainActivity)
+                                        .areNotificationsEnabled()
+                                ) {
+                                    completePushRequest(
+                                        replyProxy,
+                                        HealthConnectWebBridge.RESULT_DENIED
+                                    )
+                                } else {
+                                    registerPushNotification(replyProxy)
+                                }
+                            }
                         }
                     ).attach(this)
 
@@ -551,14 +745,24 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                pendingPushPermissionReplyProxy?.let { replyProxy ->
+                    runCatching {
+                        replyProxy.postMessage(HealthConnectWebBridge.RESULT_CANCELLED)
+                    }
+                }
+
                 pendingPermissionReplyProxy = null
                 pendingSyncReplyProxy = null
+                pendingPushPermissionReplyProxy = null
 
                 healthConnectJob?.cancel()
                 healthConnectJob = null
 
                 healthSyncJob?.cancel()
                 healthSyncJob = null
+
+                pushRegistrationJob?.cancel()
+                pushRegistrationJob = null
 
                 view.stopLoading()
                 view.removeAllViews()
