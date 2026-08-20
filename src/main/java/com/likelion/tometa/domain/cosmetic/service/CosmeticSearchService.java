@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.likelion.tometa.domain.cosmetic.support.CosmeticProductNameFormatter.format;
+
 @Service
 @RequiredArgsConstructor
 public class CosmeticSearchService {
@@ -58,7 +60,7 @@ public class CosmeticSearchService {
 
             items.add(new CosmeticSearchResponseDto.Item(
                     index + 1,
-                    candidate.productName(),
+                    format(candidate.brandName(), candidate.productName()),
                     resolveBrandName(candidate.brandName()),
                     candidate.productType(),
                     candidate.imageUrl()

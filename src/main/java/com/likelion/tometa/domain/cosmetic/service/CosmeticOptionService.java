@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.likelion.tometa.domain.cosmetic.support.CosmeticProductNameFormatter.format;
+
 @Service
 @RequiredArgsConstructor
 public class CosmeticOptionService {
@@ -151,7 +153,7 @@ public class CosmeticOptionService {
 
         return new CosmeticOptionResponseDto.CosmeticOption(
                 userCosmetic.getId(),
-                product.getProductName(),
+                format(product.getBrandName(), product.getProductName()),
                 product.getBrandName(),
                 product.getProductType(),
                 tags

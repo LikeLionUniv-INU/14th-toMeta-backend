@@ -2,6 +2,7 @@ package com.likelion.tometa.domain.cosmetic.service;
 
 import com.likelion.tometa.domain.cosmetic.code.CosmeticErrorCode;
 import com.likelion.tometa.domain.cosmetic.dto.request.ManualCosmeticCreateRequestDto;
+import com.likelion.tometa.domain.cosmetic.dto.response.SearchedCosmeticCreateResponseDto;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticIngredient;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
@@ -15,6 +16,7 @@ import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetItemRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticSetRepository;
 import com.likelion.tometa.domain.cosmetic.repository.CosmeticTagRepository;
 import com.likelion.tometa.domain.cosmetic.repository.UserCosmeticRepository;
+import com.likelion.tometa.domain.cosmetic.support.CosmeticSearchCandidate;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.support.AnonymousSessionUserResolver;
 import com.likelion.tometa.global.code.GlobalErrorCode;
@@ -26,6 +28,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -148,6 +151,46 @@ class UserCosmeticServiceTest {
         assertSame(user, capturedUserCosmetic.getUser());
         assertSame(savedProduct, capturedUserCosmetic.getCosmeticProduct());
         assertNull(capturedUserCosmetic.getCustomName());
+    }
+
+    @Test
+    void createSearchedCosmetic_storesBrandSeparatelyAndReturnsDisplayName() {
+        CosmeticSearchCandidate candidate = searchedCandidate("다이브인 세럼", "토리든");
+        when(cosmeticProductRepository.save(any(CosmeticProduct.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(userCosmeticRepository.save(any(UserCosmetic.class)))
+                .thenAnswer(invocation -> {
+                    UserCosmetic saved = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(saved, "id", 11L);
+                    return saved;
+                });
+
+        SearchedCosmeticCreateResponseDto result = userCosmeticService
+                .createSearchedCosmetic(user, candidate);
+
+        ArgumentCaptor<CosmeticProduct> productCaptor =
+                ArgumentCaptor.forClass(CosmeticProduct.class);
+        verify(cosmeticProductRepository).save(productCaptor.capture());
+        CosmeticProduct savedProduct = productCaptor.getValue();
+        assertEquals("다이브인 세럼", savedProduct.getProductName());
+        assertEquals("토리든", savedProduct.getBrandName());
+        assertEquals("토리든 다이브인 세럼", result.productName());
+    }
+
+    @Test
+    void createSearchedCosmetic_returnsOriginalProductNameForMissingBrand() {
+        when(cosmeticProductRepository.save(any(CosmeticProduct.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(userCosmeticRepository.save(any(UserCosmetic.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        for (String brandName : new String[]{null, "", "   "}) {
+            CosmeticSearchCandidate candidate = searchedCandidate("진정 크림", brandName);
+            SearchedCosmeticCreateResponseDto result = userCosmeticService
+                    .createSearchedCosmetic(user, candidate);
+
+            assertEquals("진정 크림", result.productName());
+        }
     }
 
     @Test
@@ -300,6 +343,20 @@ class UserCosmeticServiceTest {
                 .user(user)
                 .cosmeticProduct(cosmeticProduct)
                 .build();
+    }
+
+    private CosmeticSearchCandidate searchedCandidate(
+            String productName,
+            String brandName
+    ) {
+        return new CosmeticSearchCandidate(
+                productName,
+                brandName,
+                "serum",
+                "https://example.com/image.jpg",
+                "진정",
+                List.of("판테놀")
+        );
     }
 
     private CosmeticSet cosmeticSet(String name) {

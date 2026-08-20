@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.likelion.tometa.domain.cosmetic.constant.CosmeticSetPolicy.MIN_ITEM_COUNT;
+import static com.likelion.tometa.domain.cosmetic.support.CosmeticProductNameFormatter.format;
 
 @Service
 @RequiredArgsConstructor
@@ -96,6 +97,7 @@ public class UserCosmeticService {
                         .createdByUser(user)
                         .sourceType(SEARCH_SOURCE_TYPE)
                         .productName(candidate.productName())
+                        .brandName(candidate.brandName())
                         .productType(candidate.productType())
                         .imageUrl(candidate.imageUrl())
                         .build()
@@ -117,7 +119,10 @@ public class UserCosmeticService {
 
         return new SearchedCosmeticCreateResponseDto(
                 userCosmetic.getId(),
-                cosmeticProduct.getProductName(),
+                format(
+                        cosmeticProduct.getBrandName(),
+                        cosmeticProduct.getProductName()
+                ),
                 cosmeticProduct.getProductType(),
                 createSearchResponseTags(candidate)
         );

@@ -271,7 +271,8 @@ class CosmeticSetServiceTest {
         ReflectionTestUtils.setField(cosmeticSet, "id", 7L);
         CosmeticProduct toner = cosmeticProduct(
                 101L,
-                "아누아 어성초 77% 진정 토너",
+                "어성초 77% 진정 토너",
+                "아누아",
                 "skin_toner"
         );
         CosmeticProduct serum = cosmeticProduct(
@@ -308,6 +309,7 @@ class CosmeticSetServiceTest {
         assertEquals("morning", result.usageTime());
         assertEquals(2, result.cosmetics().size());
         assertEquals(12L, result.cosmetics().get(0).userCosmeticId());
+        assertEquals("어성초 77% 진정 토너", toner.getProductName());
         assertEquals("아누아 어성초 77% 진정 토너",
                 result.cosmetics().get(0).productName());
         assertEquals(null, result.cosmetics().get(0).customName());
@@ -661,10 +663,20 @@ class CosmeticSetServiceTest {
             String productName,
             String productType
     ) {
+        return cosmeticProduct(id, productName, null, productType);
+    }
+
+    private CosmeticProduct cosmeticProduct(
+            Long id,
+            String productName,
+            String brandName,
+            String productType
+    ) {
         CosmeticProduct cosmeticProduct = CosmeticProduct.builder()
                 .createdByUser(user)
                 .sourceType("manual")
                 .productName(productName)
+                .brandName(brandName)
                 .productType(productType)
                 .build();
         ReflectionTestUtils.setField(cosmeticProduct, "id", id);
