@@ -1,9 +1,11 @@
 package com.likelion.tometa.domain.cosmetic.service;
 
+import com.likelion.tometa.domain.cosmetic.entity.CosmeticProduct;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSet;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticSetItem;
 import com.likelion.tometa.domain.cosmetic.entity.CosmeticTag;
 import com.likelion.tometa.domain.cosmetic.enums.CosmeticTagType;
+import com.likelion.tometa.domain.cosmetic.enums.ProductType;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -16,6 +18,10 @@ import java.util.Set;
 public final class CosmeticSetTagSelector {
 
     private static final int MAX_SET_TAG_COUNT = 3;
+    private static final Set<SetTagType> FALLBACK_TAG_TYPES = Set.of(
+            SetTagType.BENEFIT,
+            SetTagType.INGREDIENT
+    );
 
     private CosmeticSetTagSelector() {
     }
@@ -29,11 +35,18 @@ public final class CosmeticSetTagSelector {
         Map<TagKey, TagAggregate> aggregateByKey = new HashMap<>();
 
         for (CosmeticSetItem item : setItems) {
-            Long productId = item.getUserCosmetic().getCosmeticProduct().getId();
+            CosmeticProduct product = item.getUserCosmetic().getCosmeticProduct();
             Map<TagKey, Integer> minimumOrderByKey = new HashMap<>();
+            minimumOrderByKey.put(
+                    new TagKey(
+                            SetTagType.PRODUCT_TYPE,
+                            ProductType.displayNameOf(product.getProductType())
+                    ),
+                    0
+            );
 
-            for (CosmeticTag tag : tagsByProductId.getOrDefault(productId, List.of())) {
-                TagKey key = new TagKey(tag.getTagType(), tag.getName());
+            for (CosmeticTag tag : tagsByProductId.getOrDefault(product.getId(), List.of())) {
+                TagKey key = new TagKey(toSetTagType(tag.getTagType()), tag.getName());
                 minimumOrderByKey.merge(key, tag.getTagOrder(), Math::min);
             }
 
@@ -111,6 +124,7 @@ public final class CosmeticSetTagSelector {
         CosmeticSetItem item = component.item();
         long itemId = nullableId(item.getUserCosmetic().getId());
         List<TagCandidate> shuffledTags = component.tags().stream()
+                .filter(candidate -> FALLBACK_TAG_TYPES.contains(candidate.key().type()))
                 .sorted(Comparator
                         .comparingLong((TagCandidate candidate) -> stableScore(
                                 setSeed,
@@ -146,7 +160,20 @@ public final class CosmeticSetTagSelector {
         return id == null ? 0L : id;
     }
 
-    private record TagKey(CosmeticTagType type, String name) {
+    private static SetTagType toSetTagType(CosmeticTagType tagType) {
+        return switch (tagType) {
+            case BENEFIT -> SetTagType.BENEFIT;
+            case INGREDIENT -> SetTagType.INGREDIENT;
+        };
+    }
+
+    private enum SetTagType {
+        PRODUCT_TYPE,
+        INGREDIENT,
+        BENEFIT
+    }
+
+    private record TagKey(SetTagType type, String name) {
     }
 
     private record TagCandidate(TagKey key, int order) {
