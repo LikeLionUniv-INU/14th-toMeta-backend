@@ -24,24 +24,36 @@ class HealthSyncWorker(
     override suspend fun doWork(): Result {
         val healthConnectManager = HealthConnectManager(applicationContext)
 
+        // Provider 업데이트 등 일시적인 unavailable 가능성이 있으므로 스케줄은 유지한다.
         if (!healthConnectManager.isAvailable()) {
             return Result.success()
         }
 
         if (!healthConnectManager.isBackgroundReadAvailable()) {
-            return Result.success()
+            return cancelScheduleAndSucceed()
         }
 
         if (!healthConnectManager.hasAllPermissions()) {
-            return Result.success()
+            return cancelScheduleAndSucceed()
         }
 
         if (!healthConnectManager.hasBackgroundReadPermission()) {
-            return Result.success()
+            return cancelScheduleAndSucceed()
         }
 
-        val healthDeviceTokenStore =
-            HealthDeviceTokenStore(applicationContext)
+        val healthDeviceTokenStore = HealthDeviceTokenStore(applicationContext)
+
+        val hasToken = try {
+            !healthDeviceTokenStore.getToken().isNullOrBlank()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
+
+        if (!hasToken) {
+            return cancelScheduleAndSucceed()
+        }
 
         val healthConnectRepository = HealthConnectRepository(
             api = HealthConnectApiClient.create(ToMetaEndpoint.API_BASE_URL),
@@ -57,10 +69,7 @@ class HealthSyncWorker(
         )
 
         return try {
-            healthSyncCoordinator.syncRecent(
-                days = BACKGROUND_SYNC_DAYS
-            )
-
+            healthSyncCoordinator.syncRecent(days = BACKGROUND_SYNC_DAYS)
             Result.success()
         } catch (e: CancellationException) {
             throw e
@@ -71,9 +80,7 @@ class HealthSyncWorker(
 
             when {
                 httpException?.isAuthenticationFailure() == true -> {
-                    handleAuthenticationFailure(
-                        healthDeviceTokenStore
-                    )
+                    handleAuthenticationFailure(healthDeviceTokenStore)
                 }
 
                 httpException?.isRetryable() == true -> {
@@ -89,6 +96,11 @@ class HealthSyncWorker(
         }
     }
 
+    private fun cancelScheduleAndSucceed(): Result {
+        HealthSyncScheduler.cancel(applicationContext)
+        return Result.success()
+    }
+
     private suspend fun handleAuthenticationFailure(
         healthDeviceTokenStore: HealthDeviceTokenStore
     ): Result {
@@ -97,13 +109,10 @@ class HealthSyncWorker(
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            // 토큰 삭제에 실패하더라도 반복 인증 실패를 막기 위해 Worker는 취소한다.
+            // 토큰 삭제 실패와 관계없이 반복 인증 요청을 막기 위해 스케줄은 취소한다.
         }
 
-        HealthSyncScheduler.cancel(
-            applicationContext
-        )
-
+        HealthSyncScheduler.cancel(applicationContext)
         return Result.success()
     }
 
@@ -122,7 +131,6 @@ class HealthSyncWorker(
             if (current is HttpException) {
                 return current
             }
-
             current = current.cause
         }
 
