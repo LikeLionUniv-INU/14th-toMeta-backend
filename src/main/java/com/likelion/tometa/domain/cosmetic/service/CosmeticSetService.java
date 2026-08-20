@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.likelion.tometa.domain.cosmetic.constant.CosmeticSetPolicy.MIN_ITEM_COUNT;
+import static com.likelion.tometa.domain.cosmetic.support.CosmeticProductNameFormatter.format;
 
 @Service
 @RequiredArgsConstructor
@@ -246,7 +247,10 @@ public class CosmeticSetService {
 
         return new CosmeticSetDetailResponseDto.Cosmetic(
                 userCosmetic.getId(),
-                cosmeticProduct.getProductName(),
+                format(
+                        cosmeticProduct.getBrandName(),
+                        cosmeticProduct.getProductName()
+                ),
                 userCosmetic.getCustomName(),
                 cosmeticProduct.getProductType(),
                 mainIngredientsByProductId.getOrDefault(

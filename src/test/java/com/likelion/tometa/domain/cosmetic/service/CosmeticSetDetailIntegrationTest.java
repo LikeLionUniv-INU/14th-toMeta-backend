@@ -76,7 +76,7 @@ class CosmeticSetDetailIntegrationTest {
         user = userRepository.save(User.builder().build());
 
         CosmeticProduct toner = cosmeticProductRepository.save(
-                cosmeticProduct("진정 토너", "skin_toner")
+                cosmeticProduct("진정 토너", "아누아", "skin_toner")
         );
         CosmeticProduct serum = cosmeticProductRepository.save(
                 cosmeticProduct("수분 세럼", "serum")
@@ -118,7 +118,8 @@ class CosmeticSetDetailIntegrationTest {
         assertEquals("morning", result.usageTime());
         assertEquals(2, result.cosmetics().size());
         assertEquals(tonerCosmetic.getId(), result.cosmetics().get(0).userCosmeticId());
-        assertEquals("진정 토너", result.cosmetics().get(0).productName());
+        assertEquals("진정 토너", tonerCosmetic.getCosmeticProduct().getProductName());
+        assertEquals("아누아 진정 토너", result.cosmetics().get(0).productName());
         assertNull(result.cosmetics().get(0).customName());
         assertEquals("skin_toner", result.cosmetics().get(0).productType());
         assertEquals(
@@ -177,10 +178,19 @@ class CosmeticSetDetailIntegrationTest {
     }
 
     private CosmeticProduct cosmeticProduct(String productName, String productType) {
+        return cosmeticProduct(productName, null, productType);
+    }
+
+    private CosmeticProduct cosmeticProduct(
+            String productName,
+            String brandName,
+            String productType
+    ) {
         return CosmeticProduct.builder()
                 .createdByUser(user)
                 .sourceType("manual")
                 .productName(productName)
+                .brandName(brandName)
                 .productType(productType)
                 .build();
     }
