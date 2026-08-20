@@ -1,6 +1,7 @@
 package com.likelion.tometa.domain.record.entity;
 
 import com.likelion.tometa.domain.common.entity.BaseTimeEntity;
+import com.likelion.tometa.domain.record.constant.DailyRecordPolicy;
 import com.likelion.tometa.domain.user.entity.User;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -37,10 +38,10 @@ public class DailyRecord extends BaseTimeEntity {
     @Column(name = "skin_status", nullable = false, length = 20)
     private String skinStatus;
 
-    @Column(name = "food_memo", length = 300)
+    @Column(name = "food_memo", length = DailyRecordPolicy.MAX_MEMO_LENGTH)
     private String foodMemo;
 
-    @Column(name = "memo", length = 300)
+    @Column(name = "memo", length = DailyRecordPolicy.MAX_MEMO_LENGTH)
     private String memo;
 
     @Builder

@@ -10,6 +10,7 @@ import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
@@ -17,7 +18,10 @@ import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.IntStream;
 
 import static com.likelion.tometa.domain.record.constant.RecordImagePolicy.ALLOWED_CONTENT_TYPES;
@@ -55,6 +59,75 @@ public class DailyRecordImageAttachmentService {
             throw new GeneralException(RecordImageErrorCode.IMAGE_ALREADY_USED);
         }
 
+    }
+
+    @Transactional
+    public void replace(DailyRecord dailyRecord, User user, List<String> imageKeys) {
+        Objects.requireNonNull(imageKeys, "imageKeys");
+        validateKeys(user, imageKeys);
+
+        List<DailyRecordImage> existingImages = dailyRecordImageRepository
+                .findAllByDailyRecordOrderBySortOrderAsc(dailyRecord);
+        Map<String, DailyRecordImage> existingByKey = existingImages.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        DailyRecordImage::getObjectKey,
+                        image -> image,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+
+        List<String> removedKeys = existingImages.stream()
+                .map(DailyRecordImage::getObjectKey)
+                .filter(key -> !imageKeys.contains(key))
+                .toList();
+        List<String> addedKeys = imageKeys.stream()
+                .filter(key -> !existingByKey.containsKey(key))
+                .toList();
+
+        Map<String, DailyRecordImage> addedByKey = addedKeys.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        key -> key,
+                        key -> createImage(dailyRecord, key, 1),
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        List<DailyRecordImage> retainedImages = imageKeys.stream()
+                .map(existingByKey::get)
+                .filter(Objects::nonNull)
+                .toList();
+
+        recordImageOwnershipService.replaceAttachments(
+                user.getId(),
+                removedKeys,
+                addedKeys
+        );
+        for (int index = 0; index < retainedImages.size(); index++) {
+            retainedImages.get(index).updateSortOrder(MAX_IMAGE_COUNT + index + 1);
+        }
+        if (!retainedImages.isEmpty()) {
+            dailyRecordImageRepository.flush();
+        }
+
+        List<DailyRecordImage> removedImages = removedKeys.stream()
+                .map(existingByKey::get)
+                .toList();
+        if (!removedImages.isEmpty()) {
+            dailyRecordImageRepository.deleteAll(removedImages);
+            dailyRecordImageRepository.flush();
+        }
+
+        List<DailyRecordImage> finalImages = IntStream.range(0, imageKeys.size())
+                .mapToObj(index -> {
+                    String key = imageKeys.get(index);
+                    DailyRecordImage image = existingByKey.getOrDefault(
+                            key,
+                            addedByKey.get(key)
+                    );
+                    image.updateSortOrder(index + 1);
+                    return image;
+                })
+                .toList();
+        dailyRecordImageRepository.saveAllAndFlush(finalImages);
     }
 
     private DailyRecordImage createImage(

@@ -24,6 +24,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -84,10 +85,20 @@ public class DailyReportGenerationTransactionService {
                                 dailyRecord
                         );
 
-        dailyReport.markGenerating();
+        long generationVersion = dailyReport.getGenerationVersion();
+        int markedGenerating = dailyReportRepository.markGeneratingIfCurrent(
+                dailyReport.getId(),
+                generationVersion
+        );
+        if (markedGenerating == 0) {
+            throw new GeneralException(
+                    ReportErrorCode.DAILY_REPORT_GENERATION_IN_PROGRESS
+            );
+        }
 
         return Preparation.pending(
                 dailyReport.getId(),
+                generationVersion,
                 healthSummary == null ? null : healthSummary.getId(),
                 createContext(
                         user,
@@ -101,32 +112,39 @@ public class DailyReportGenerationTransactionService {
     @Transactional
     public DailyReportGenerationResponseDto complete(
             Long reportId,
+            long generationVersion,
             Long healthSummaryId,
             DailyReportAiResult aiResult
     ) {
-        DailyReport dailyReport = dailyReportRepository.findById(reportId)
-                .orElseThrow();
-
         DailyHealthSummary healthSummary = healthSummaryId == null
                 ? null
                 : dailyHealthSummaryRepository.findById(healthSummaryId)
                 .orElse(null);
 
-        dailyReport.complete(
+        int completed = dailyReportRepository.completeGenerationIfCurrent(
+                reportId,
+                generationVersion,
                 healthSummary,
                 aiResult.aiSummary(),
                 aiResult.aiAnalysis(),
-                aiResult.personalizedSolution()
+                aiResult.personalizedSolution(),
+                LocalDateTime.now()
         );
+        if (completed == 0) {
+            throw new GeneralException(
+                    ReportErrorCode.DAILY_REPORT_GENERATION_STALE
+            );
+        }
 
-        return toResponse(dailyReport);
+        return toResponse(dailyReportRepository.findById(reportId).orElseThrow());
     }
 
     @Transactional
-    public void reset(Long reportId) {
-        dailyReportRepository.findById(reportId)
-                .filter(report -> GENERATING.equals(report.getReportStatus()))
-                .ifPresent(DailyReport::markCollecting);
+    public void reset(Long reportId, long generationVersion) {
+        dailyReportRepository.resetGenerationIfCurrent(
+                reportId,
+                generationVersion
+        );
     }
 
     private DailyReportGenerationContext createContext(
@@ -244,6 +262,7 @@ public class DailyReportGenerationTransactionService {
 
     public record Preparation(
             Long reportId,
+            long generationVersion,
             Long healthSummaryId,
             DailyReportGenerationContext context,
             DailyReportGenerationResponseDto completedResponse
@@ -251,11 +270,13 @@ public class DailyReportGenerationTransactionService {
 
         public static Preparation pending(
                 Long reportId,
+                long generationVersion,
                 Long healthSummaryId,
                 DailyReportGenerationContext context
         ) {
             return new Preparation(
                     reportId,
+                    generationVersion,
                     healthSummaryId,
                     context,
                     null
@@ -267,6 +288,7 @@ public class DailyReportGenerationTransactionService {
         ) {
             return new Preparation(
                     response.dailyReportId(),
+                    0L,
                     null,
                     null,
                     response

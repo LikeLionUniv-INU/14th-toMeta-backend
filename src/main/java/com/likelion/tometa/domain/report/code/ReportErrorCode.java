@@ -24,9 +24,14 @@ public enum ReportErrorCode implements BaseErrorCode {
             "REPORT_4091",
             "일간 리포트가 생성 중입니다."
     ),
-    WEEKLY_REPORT_GENERATION_IN_PROGRESS(
+    DAILY_REPORT_GENERATION_STALE(
             HttpStatus.CONFLICT,
             "REPORT_4092",
+            "일간 리포트 생성 기준이 변경되었습니다. 다시 요청해 주세요."
+    ),
+    WEEKLY_REPORT_GENERATION_IN_PROGRESS(
+            HttpStatus.CONFLICT,
+            "REPORT_4093",
             "주간 리포트가 생성 중입니다."
     ),
     DAILY_REPORT_AI_GENERATION_FAILED(

@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,6 +44,28 @@ public class RecordImageOwnershipService {
         objectKeys.stream()
                 .sorted()
                 .forEach(objectKey -> claimForAttachment(ownerUserId, objectKey));
+    }
+
+    @Transactional
+    public void replaceAttachments(
+            Long ownerUserId,
+            List<String> removedObjectKeys,
+            List<String> addedObjectKeys
+    ) {
+        Set<String> added = Set.copyOf(addedObjectKeys);
+        java.util.stream.Stream.concat(
+                        removedObjectKeys.stream(),
+                        addedObjectKeys.stream()
+                )
+                .distinct()
+                .sorted()
+                .forEach(objectKey -> {
+                    if (added.contains(objectKey)) {
+                        claimForAttachment(ownerUserId, objectKey);
+                    } else {
+                        releaseAttachment(ownerUserId, objectKey);
+                    }
+                });
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -106,6 +129,18 @@ public class RecordImageOwnershipService {
             throw new GeneralException(RecordImageErrorCode.IMAGE_NOT_FOUND);
         }
         object.markAttached();
+    }
+
+    private void releaseAttachment(Long ownerUserId, String objectKey) {
+        RecordImageObject object = recordImageObjectRepository
+                .findByObjectKeyForUpdate(objectKey)
+                .orElseThrow(() -> new GeneralException(
+                        RecordImageErrorCode.INVALID_IMAGE_KEY));
+        if (!ownerUserId.equals(object.getOwnerUserId())
+                || object.getStatus() != RecordImageObjectStatus.ATTACHED) {
+            throw new GeneralException(RecordImageErrorCode.INVALID_IMAGE_KEY);
+        }
+        object.markPending();
     }
 
     private void registerLegacyAttachment(Long ownerUserId, String objectKey) {

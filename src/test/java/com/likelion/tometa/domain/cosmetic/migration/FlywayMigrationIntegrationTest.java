@@ -36,7 +36,7 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
-        assertEquals(6, successfulMigrationCount(jdbcUrl));
+        assertEquals(10, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -58,7 +58,7 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
-        assertEquals(6, successfulMigrationCount(jdbcUrl));
+        assertEquals(10, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -97,7 +97,7 @@ class FlywayMigrationIntegrationTest {
                                 + "and created_at = timestamp '2025-01-02 03:04:05'"
                 )
         );
-        assertEquals(6, successfulMigrationCount(jdbcUrl));
+        assertEquals(10, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -173,6 +173,97 @@ class FlywayMigrationIntegrationTest {
                         + "where owner_user_id = 1 "
                         + "and object_key = 'skin-images/1/attached.jpg' "
                         + "and status = 'ATTACHED'"));
+    }
+
+    @Test
+    void migrate_backfillsDailyRecordSetMembersFromRecordedCosmetics() throws Exception {
+        String jdbcUrl = newJdbcUrl();
+        Flyway.configure()
+                .dataSource(jdbcUrl, USERNAME, PASSWORD)
+                .locations(H2_MIGRATION_LOCATION)
+                .target("7")
+                .load()
+                .migrate();
+
+        executeUpdate(jdbcUrl, """
+                insert into users (user_id, created_at, updated_at)
+                values (1, current_timestamp, current_timestamp)
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into cosmetic_products (
+                    cosmetic_product_id, created_at, updated_at,
+                    source_type, product_type, product_name
+                ) values
+                    (1, current_timestamp, current_timestamp, 'manual', 'serum', 'first'),
+                    (2, current_timestamp, current_timestamp, 'manual', 'serum', 'second'),
+                    (3, current_timestamp, current_timestamp, 'manual', 'serum', 'not-recorded')
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into user_cosmetics (
+                    user_cosmetic_id, user_id, cosmetic_product_id, created_at, updated_at
+                ) values
+                    (1, 1, 1, current_timestamp, current_timestamp),
+                    (2, 1, 2, current_timestamp, current_timestamp),
+                    (3, 1, 3, current_timestamp, current_timestamp)
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into cosmetic_sets (
+                    cosmetic_set_id, user_id, name, usage_time, created_at, updated_at
+                ) values (
+                    10, 1, 'legacy set', 'MORNING', current_timestamp, current_timestamp
+                )
+                """);
+        executeUpdate(jdbcUrl, """
+                alter table cosmetic_set_items
+                    drop constraint uk_cosmetic_set_items_set_order
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into cosmetic_set_items (
+                    cosmetic_set_item_id, cosmetic_set_id,
+                    user_cosmetic_id, item_order, created_at
+                ) values
+                    (11, 10, 1, 1, current_timestamp),
+                    (12, 10, 2, 1, current_timestamp),
+                    (13, 10, 3, 3, current_timestamp)
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into daily_records (
+                    daily_record_id, user_id, record_date, skin_status, created_at, updated_at
+                ) values (
+                    20, 1, date '2026-08-12', 'normal', current_timestamp, current_timestamp
+                )
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into daily_record_cosmetics (
+                    daily_record_cosmetic_id, daily_record_id, user_cosmetic_id,
+                    usage_period, product_type_snapshot, product_name_snapshot,
+                    sort_order, created_at
+                ) values
+                    (21, 20, 1, 'morning', 'serum', 'historic first', 1, current_timestamp),
+                    (22, 20, 2, 'morning', 'serum', 'historic second', 2, current_timestamp)
+                """);
+        executeUpdate(jdbcUrl, """
+                insert into daily_record_cosmetic_sets (
+                    daily_record_cosmetic_set_id, daily_record_id,
+                    source_cosmetic_set_id, set_name_snapshot,
+                    set_usage_time_snapshot, usage_period, sort_order, created_at
+                ) values (
+                    30, 20, 10, 'historic set',
+                    'morning', 'morning', 1, current_timestamp
+                )
+                """);
+
+        flyway(jdbcUrl).migrate();
+
+        assertEquals(2, queryForInt(jdbcUrl,
+                "select count(*) from daily_record_cosmetic_set_items "
+                        + "where daily_record_cosmetic_set_id = 30"));
+        assertEquals(1, queryForInt(jdbcUrl,
+                "select user_cosmetic_id from daily_record_cosmetic_set_items "
+                        + "where daily_record_cosmetic_set_id = 30 and sort_order = 1"));
+        assertEquals(2, queryForInt(jdbcUrl,
+                "select user_cosmetic_id from daily_record_cosmetic_set_items "
+                        + "where daily_record_cosmetic_set_id = 30 and sort_order = 2"));
     }
 
     private void migrateAfterSignal(

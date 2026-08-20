@@ -110,7 +110,7 @@ class CosmeticOptionServiceTest {
         CosmeticOptionResponseDto.CosmeticOption searchOption = result.cosmetics().get(0);
         assertEquals(12L, searchOption.userCosmeticId());
         assertEquals("토리든", searchOption.brandName());
-        assertEquals(List.of("serum", "보습", "수분", "히알루론산"), searchOption.tags());
+        assertEquals(List.of("세럼", "보습", "수분", "히알루론산"), searchOption.tags());
 
         CosmeticOptionResponseDto.CosmeticOption manualOption = result.cosmetics().get(1);
         assertEquals(11L, manualOption.userCosmeticId());

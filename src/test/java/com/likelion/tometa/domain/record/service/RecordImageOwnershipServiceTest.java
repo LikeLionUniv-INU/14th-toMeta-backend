@@ -78,6 +78,27 @@ class RecordImageOwnershipServiceTest {
     }
 
     @Test
+    void replaceAttachments_releasesRemovedAndClaimsAddedObjects() {
+        String removedKey = "skin-images/1/removed.jpg";
+        String addedKey = "skin-images/1/added.jpg";
+        RecordImageObject removed = RecordImageObject.attached(1L, removedKey);
+        RecordImageObject added = RecordImageObject.pending(1L, addedKey);
+        when(recordImageObjectRepository.findByObjectKeyForUpdate(addedKey))
+                .thenReturn(Optional.of(added));
+        when(recordImageObjectRepository.findByObjectKeyForUpdate(removedKey))
+                .thenReturn(Optional.of(removed));
+
+        service.replaceAttachments(
+                1L,
+                List.of(removedKey),
+                List.of(addedKey)
+        );
+
+        assertSame(RecordImageObjectStatus.PENDING, removed.getStatus());
+        assertSame(RecordImageObjectStatus.ATTACHED, added.getStatus());
+    }
+
+    @Test
     void claimForAttachment_rejectsCleanupClaimedObject() {
         String key = "skin-images/1/image.jpg";
         RecordImageObject object = RecordImageObject.cleanupClaimed(

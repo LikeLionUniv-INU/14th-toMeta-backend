@@ -34,11 +34,15 @@ public class DailyReportGenerationService {
 
             return transactionService.complete(
                     preparation.reportId(),
+                    preparation.generationVersion(),
                     preparation.healthSummaryId(),
                     aiResult
             );
         } catch (RuntimeException e) {
-            transactionService.reset(preparation.reportId());
+            transactionService.reset(
+                    preparation.reportId(),
+                    preparation.generationVersion()
+            );
             throw e;
         }
     }
