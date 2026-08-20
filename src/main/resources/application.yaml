@@ -28,6 +28,9 @@ spring:
     baseline-version: 1
 
 app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
   anonymous-session:
     expiration-days: 60
     cookie-secure: ${COOKIE_SECURE:true}
