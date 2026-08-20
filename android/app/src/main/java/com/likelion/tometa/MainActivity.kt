@@ -2,14 +2,19 @@ package com.likelion.tometa
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.webkit.CookieManager
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -29,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.JavaScriptReplyProxy
@@ -57,6 +63,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -73,6 +80,9 @@ class MainActivity : ComponentActivity() {
     private var pendingPermissionReplyProxy: JavaScriptReplyProxy? = null
     private var pendingSyncReplyProxy: JavaScriptReplyProxy? = null
     private var pendingPushPermissionReplyProxy: JavaScriptReplyProxy? = null
+    private var pendingFileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingCameraUri: Uri? = null
+    private var pendingCameraFile: File? = null
     private var healthConnectJob: Job? = null
     private var healthSyncJob: Job? = null
     private var pushRegistrationJob: Job? = null
@@ -96,9 +106,7 @@ class MainActivity : ComponentActivity() {
             healthDeviceTokenStore = healthDeviceTokenStore
         )
         healthSyncCoordinator = HealthSyncCoordinator(
-            requestFactory = HealthSyncRequestFactory(
-                HealthConnectReader(healthConnectManager)
-            ),
+            requestFactory = HealthSyncRequestFactory(HealthConnectReader(healthConnectManager)),
             healthConnectRepository = healthConnectRepository
         )
         pushTokenRepository = PushTokenRepository(
@@ -115,12 +123,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ToMetaWebView(
-                savedWebViewState = savedInstanceState?.getBundle(
-                    WEB_VIEW_STATE_KEY
-                ),
-                savedUrl = savedInstanceState?.getString(
-                    WEB_VIEW_URL_KEY
-                )
+                savedWebViewState = savedInstanceState?.getBundle(WEB_VIEW_STATE_KEY),
+                savedUrl = savedInstanceState?.getString(WEB_VIEW_URL_KEY)
             )
         }
     }
@@ -132,62 +136,27 @@ class MainActivity : ComponentActivity() {
         currentWebView?.let { webView ->
             webView.url
                 ?.takeIf { isTrustedUrl(Uri.parse(it)) }
-                ?.let {
-                    outState.putString(
-                        WEB_VIEW_URL_KEY,
-                        it
-                    )
-                }
+                ?.let { outState.putString(WEB_VIEW_URL_KEY, it) }
 
-            if (
-                WebViewFeature.isFeatureSupported(
-                    WebViewFeature.SAVE_STATE
-                )
-            ) {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.SAVE_STATE)) {
                 val webViewState = Bundle()
-
-                WebViewCompat.saveState(
-                    webView,
-                    webViewState,
-                    MAX_WEB_VIEW_STATE_BYTES,
-                    false
-                )
-
-                outState.putBundle(
-                    WEB_VIEW_STATE_KEY,
-                    webViewState
-                )
+                WebViewCompat.saveState(webView, webViewState, MAX_WEB_VIEW_STATE_BYTES, false)
+                outState.putBundle(WEB_VIEW_STATE_KEY, webViewState)
             }
         }
     }
 
     private fun isTrustedUrl(uri: Uri): Boolean {
-        val trustedUri = Uri.parse(
-            ToMetaEndpoint.WEB_URL
-        )
+        val trustedUri = Uri.parse(ToMetaEndpoint.WEB_URL)
 
-        return uri.scheme.equals(
-            trustedUri.scheme,
-            ignoreCase = true
-        ) &&
-                uri.host.equals(
-                    trustedUri.host,
-                    ignoreCase = true
-                ) &&
+        return uri.scheme.equals(trustedUri.scheme, ignoreCase = true) &&
+                uri.host.equals(trustedUri.host, ignoreCase = true) &&
                 uri.port == trustedUri.port
     }
 
-    private fun openExternalUrl(
-        context: Context,
-        uri: Uri
-    ) {
-        val intent = Intent(
-            Intent.ACTION_VIEW,
-            uri
-        ).apply {
-            addCategory(
-                Intent.CATEGORY_BROWSABLE
-            )
+    private fun openExternalUrl(context: Context, uri: Uri) {
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
         }
 
         try {
@@ -198,33 +167,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun getAnonymousSessionCookieHeader(): String? {
-        val cookieHeader =
-            CookieManager
-                .getInstance()
-                .getCookie(
-                    ToMetaEndpoint.WEB_URL
-                )
+        val cookieHeader = CookieManager.getInstance().getCookie(ToMetaEndpoint.WEB_URL)
+        val anonymousSessionValue = cookieHeader
+            ?.split(";")
+            ?.map { it.trim() }
+            ?.firstOrNull {
+                it.substringBefore("=") == ANONYMOUS_SESSION_COOKIE_NAME
+            }
+            ?.substringAfter("=", missingDelimiterValue = "")
+            ?.trim()
 
-        val anonymousSessionValue =
-            cookieHeader
-                ?.split(";")
-                ?.map {
-                    it.trim()
-                }
-                ?.firstOrNull {
-                    it.substringBefore("=") ==
-                            ANONYMOUS_SESSION_COOKIE_NAME
-                }
-                ?.substringAfter(
-                    "=",
-                    missingDelimiterValue = ""
-                )
-                ?.trim()
-
-        return if (
-            cookieHeader.isNullOrBlank() ||
-            anonymousSessionValue.isNullOrBlank()
-        ) {
+        return if (cookieHeader.isNullOrBlank() || anonymousSessionValue.isNullOrBlank()) {
             null
         } else {
             cookieHeader
@@ -262,24 +215,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private suspend fun updateBackgroundSyncSchedule() {
-        val hasToken =
-            try {
-                !healthDeviceTokenStore
-                    .getToken()
-                    .isNullOrBlank()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                HealthSyncScheduler.cancel(
-                    applicationContext
-                )
-                return
-            }
+        val hasToken = try {
+            !healthDeviceTokenStore.getToken().isNullOrBlank()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            HealthSyncScheduler.cancel(applicationContext)
+            return
+        }
 
         if (!hasToken) {
-            HealthSyncScheduler.cancel(
-                applicationContext
-            )
+            HealthSyncScheduler.cancel(applicationContext)
             return
         }
 
@@ -291,49 +237,33 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        if (
-            !healthConnectManager
-                .isBackgroundReadAvailable()
-        ) {
-            HealthSyncScheduler.cancel(
-                applicationContext
-            )
+        if (!healthConnectManager.isBackgroundReadAvailable()) {
+            HealthSyncScheduler.cancel(applicationContext)
             return
         }
 
-        val hasRequiredPermissions =
-            try {
-                healthConnectManager
-                    .hasAllPermissions()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                return
-            }
-
-        val hasBackgroundPermission =
-            try {
-                healthConnectManager
-                    .hasBackgroundReadPermission()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                return
-            }
-
-        if (
-            !hasRequiredPermissions ||
-            !hasBackgroundPermission
-        ) {
-            HealthSyncScheduler.cancel(
-                applicationContext
-            )
+        val hasRequiredPermissions = try {
+            healthConnectManager.hasAllPermissions()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
             return
         }
 
-        HealthSyncScheduler.schedule(
-            applicationContext
-        )
+        val hasBackgroundPermission = try {
+            healthConnectManager.hasBackgroundReadPermission()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return
+        }
+
+        if (!hasRequiredPermissions || !hasBackgroundPermission) {
+            HealthSyncScheduler.cancel(applicationContext)
+            return
+        }
+
+        HealthSyncScheduler.schedule(applicationContext)
     }
 
     private suspend fun updateBackgroundSyncScheduleSafely() {
@@ -346,79 +276,56 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun connectHealthDevice(
-        replyProxy: JavaScriptReplyProxy
-    ) {
-        val cookieHeader =
-            getAnonymousSessionCookieHeader()
+    private fun connectHealthDevice(replyProxy: JavaScriptReplyProxy) {
+        val cookieHeader = getAnonymousSessionCookieHeader()
 
         if (cookieHeader == null) {
             replyHealthConnection(
                 replyProxy = replyProxy,
-                status =
-                    HealthConnectWebBridge.RESULT_SESSION_MISSING
+                status = HealthConnectWebBridge.RESULT_SESSION_MISSING
             )
 
-            if (
-                pendingPermissionReplyProxy ===
-                replyProxy
-            ) {
+            if (pendingPermissionReplyProxy === replyProxy) {
                 pendingPermissionReplyProxy = null
             }
-
             return
         }
 
-        val job =
-            lifecycleScope.launch {
-                val connectionSucceeded =
-                    try {
-                        healthConnectRepository
-                            .connect(cookieHeader)
-
-                        true
-                    } catch (
-                        e: CancellationException
-                    ) {
-                        throw e
-                    } catch (_: Exception) {
-                        false
-                    }
-
-                if (connectionSucceeded) {
-                    updateBackgroundSyncScheduleSafely()
-                }
-
-                if (
-                    pendingPermissionReplyProxy !==
-                    replyProxy
-                ) {
-                    return@launch
-                }
-
-                if (connectionSucceeded) {
-                    replyHealthConnection(
-                        replyProxy = replyProxy,
-                        status =
-                            HealthConnectWebBridge.RESULT_GRANTED,
-                        connectionRegistered = true
-                    )
-                } else {
-                    replyHealthConnection(
-                        replyProxy = replyProxy,
-                        status =
-                            HealthConnectWebBridge.RESULT_CONNECTION_FAILED
-                    )
-                }
-
-                if (
-                    pendingPermissionReplyProxy ===
-                    replyProxy
-                ) {
-                    pendingPermissionReplyProxy =
-                        null
-                }
+        val job = lifecycleScope.launch {
+            val connectionSucceeded = try {
+                healthConnectRepository.connect(cookieHeader)
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
             }
+
+            if (connectionSucceeded) {
+                updateBackgroundSyncScheduleSafely()
+            }
+
+            if (pendingPermissionReplyProxy !== replyProxy) {
+                return@launch
+            }
+
+            if (connectionSucceeded) {
+                replyHealthConnection(
+                    replyProxy = replyProxy,
+                    status = HealthConnectWebBridge.RESULT_GRANTED,
+                    connectionRegistered = true
+                )
+            } else {
+                replyHealthConnection(
+                    replyProxy = replyProxy,
+                    status = HealthConnectWebBridge.RESULT_CONNECTION_FAILED
+                )
+            }
+
+            if (pendingPermissionReplyProxy === replyProxy) {
+                pendingPermissionReplyProxy = null
+            }
+        }
 
         healthConnectJob = job
 
@@ -429,9 +336,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun syncHealthData(
-        replyProxy: JavaScriptReplyProxy
-    ) {
+    private fun syncHealthData(replyProxy: JavaScriptReplyProxy) {
         if (
             pendingPermissionReplyProxy != null ||
             healthConnectJob?.isActive == true ||
@@ -442,78 +347,47 @@ class MainActivity : ComponentActivity() {
         ) {
             replyHealthSync(
                 replyProxy = replyProxy,
-                status =
-                    HealthConnectWebBridge.RESULT_SYNC_BUSY
+                status = HealthConnectWebBridge.RESULT_SYNC_BUSY
             )
-
             return
         }
 
         pendingSyncReplyProxy = replyProxy
 
-        val job =
-            lifecycleScope.launch {
-                val result =
-                    try {
-                        if (
-                            !healthConnectManager
-                                .isAvailable()
-                        ) {
-                            HealthConnectWebBridge
-                                .RESULT_UNAVAILABLE
-                        } else if (
-                            !healthConnectManager
-                                .hasAllPermissions()
-                        ) {
-                            HealthConnectWebBridge
-                                .RESULT_SYNC_PERMISSION_MISSING
-                        } else {
-                            healthSyncCoordinator
-                                .syncRecent()
-
-                            HealthConnectWebBridge
-                                .RESULT_SYNC_SUCCESS
-                        }
-                    } catch (
-                        e: CancellationException
-                    ) {
-                        throw e
-                    } catch (_: Exception) {
-                        HealthConnectWebBridge
-                            .RESULT_SYNC_FAILED
-                    }
-
-                if (
-                    result ==
-                    HealthConnectWebBridge
-                        .RESULT_SYNC_SUCCESS
-                ) {
-                    updateBackgroundSyncScheduleSafely()
+        val job = lifecycleScope.launch {
+            val result = try {
+                if (!healthConnectManager.isAvailable()) {
+                    HealthConnectWebBridge.RESULT_UNAVAILABLE
+                } else if (!healthConnectManager.hasAllPermissions()) {
+                    HealthConnectWebBridge.RESULT_SYNC_PERMISSION_MISSING
+                } else {
+                    healthSyncCoordinator.syncRecent()
+                    HealthConnectWebBridge.RESULT_SYNC_SUCCESS
                 }
-
-                if (
-                    pendingSyncReplyProxy !==
-                    replyProxy
-                ) {
-                    return@launch
-                }
-
-                replyHealthSync(
-                    replyProxy = replyProxy,
-                    status = result,
-                    synced =
-                        result ==
-                                HealthConnectWebBridge
-                                    .RESULT_SYNC_SUCCESS
-                )
-
-                if (
-                    pendingSyncReplyProxy ===
-                    replyProxy
-                ) {
-                    pendingSyncReplyProxy = null
-                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                HealthConnectWebBridge.RESULT_SYNC_FAILED
             }
+
+            if (result == HealthConnectWebBridge.RESULT_SYNC_SUCCESS) {
+                updateBackgroundSyncScheduleSafely()
+            }
+
+            if (pendingSyncReplyProxy !== replyProxy) {
+                return@launch
+            }
+
+            replyHealthSync(
+                replyProxy = replyProxy,
+                status = result,
+                synced = result == HealthConnectWebBridge.RESULT_SYNC_SUCCESS
+            )
+
+            if (pendingSyncReplyProxy === replyProxy) {
+                pendingSyncReplyProxy = null
+            }
+        }
 
         healthSyncJob = job
 
@@ -524,76 +398,47 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun registerPushNotification(
-        replyProxy: JavaScriptReplyProxy
-    ) {
-        val cookieHeader =
-            getAnonymousSessionCookieHeader()
+    private fun registerPushNotification(replyProxy: JavaScriptReplyProxy) {
+        val cookieHeader = getAnonymousSessionCookieHeader()
 
         if (cookieHeader == null) {
             completePushRequest(
                 replyProxy,
-                HealthConnectWebBridge
-                    .RESULT_UNAVAILABLE
+                HealthConnectWebBridge.RESULT_UNAVAILABLE
             )
-
             return
         }
 
-        val job =
-            lifecycleScope.launch {
-                val result =
-                    try {
-                        FirebaseMessaging
-                            .getInstance()
-                            .register()
-                            .awaitCompletion()
+        val job = lifecycleScope.launch {
+            val result = try {
+                FirebaseMessaging.getInstance().register().awaitCompletion()
+                val installationId = getFirebaseInstallationId()
 
-                        val installationId =
-                            getFirebaseInstallationId()
+                if (!FirebaseInstallationIdStore(applicationContext).save(installationId)) {
+                    throw IllegalStateException(
+                        "Firebase Installation ID 저장에 실패했습니다."
+                    )
+                }
 
-                        if (
-                            !FirebaseInstallationIdStore(
-                                applicationContext
-                            ).save(
-                                installationId
-                            )
-                        ) {
-                            throw IllegalStateException(
-                                "Firebase Installation ID 저장에 실패했습니다."
-                            )
-                        }
-
-                        pushTokenRepository.register(
-                            cookieHeader =
-                                cookieHeader,
-                            firebaseInstallationId =
-                                installationId
-                        )
-
-                        HealthConnectWebBridge
-                            .RESULT_GRANTED
-                    } catch (
-                        e: CancellationException
-                    ) {
-                        throw e
-                    } catch (_: Exception) {
-                        HealthConnectWebBridge
-                            .RESULT_UNAVAILABLE
-                    }
-
-                completePushRequest(
-                    replyProxy,
-                    result
+                pushTokenRepository.register(
+                    cookieHeader = cookieHeader,
+                    firebaseInstallationId = installationId
                 )
+
+                HealthConnectWebBridge.RESULT_GRANTED
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                HealthConnectWebBridge.RESULT_UNAVAILABLE
             }
+
+            completePushRequest(replyProxy, result)
+        }
 
         pushRegistrationJob = job
 
         job.invokeOnCompletion {
-            if (
-                pushRegistrationJob === job
-            ) {
+            if (pushRegistrationJob === job) {
                 pushRegistrationJob = null
             }
         }
@@ -603,10 +448,7 @@ class MainActivity : ComponentActivity() {
         replyProxy: JavaScriptReplyProxy,
         result: String
     ) {
-        if (
-            pendingPushPermissionReplyProxy !==
-            replyProxy
-        ) {
+        if (pendingPushPermissionReplyProxy !== replyProxy) {
             return
         }
 
@@ -614,19 +456,13 @@ class MainActivity : ComponentActivity() {
             replyProxy.postMessage(result)
         }
 
-        if (
-            pendingPushPermissionReplyProxy ===
-            replyProxy
-        ) {
-            pendingPushPermissionReplyProxy =
-                null
+        if (pendingPushPermissionReplyProxy === replyProxy) {
+            pendingPushPermissionReplyProxy = null
         }
     }
 
     private suspend fun Task<*>.awaitCompletion() {
-        suspendCancellableCoroutine<Unit> {
-                continuation ->
-
+        suspendCancellableCoroutine<Unit> { continuation ->
             addOnCompleteListener { task ->
                 if (!continuation.isActive) {
                     return@addOnCompleteListener
@@ -637,65 +473,234 @@ class MainActivity : ComponentActivity() {
                 } else {
                     continuation.resumeWithException(
                         task.exception
-                            ?: IllegalStateException(
-                                "Firebase 등록에 실패했습니다."
-                            )
+                            ?: IllegalStateException("Firebase 등록에 실패했습니다.")
                     )
                 }
             }
         }
     }
 
-    private suspend fun getFirebaseInstallationId():
-            String {
-
-        return suspendCancellableCoroutine {
-                continuation ->
-
-            FirebaseInstallations
-                .getInstance()
-                .id
-                .addOnCompleteListener {
-                        task ->
-
-                    if (
-                        !continuation.isActive
-                    ) {
-                        return@addOnCompleteListener
-                    }
-
-                    if (!task.isSuccessful) {
-                        continuation
-                            .resumeWithException(
-                                task.exception
-                                    ?: IllegalStateException(
-                                        "Firebase Installation ID 조회에 실패했습니다."
-                                    )
-                            )
-
-                        return@addOnCompleteListener
-                    }
-
-                    val installationId =
-                        task.result
-
-                    if (
-                        !installationId
-                            .isNullOrBlank()
-                    ) {
-                        continuation.resume(
-                            installationId
-                        )
-                    } else {
-                        continuation
-                            .resumeWithException(
-                                IllegalStateException(
-                                    "Firebase Installation ID 조회에 실패했습니다."
-                                )
-                            )
-                    }
+    private suspend fun getFirebaseInstallationId(): String {
+        return suspendCancellableCoroutine { continuation ->
+            FirebaseInstallations.getInstance().id.addOnCompleteListener { task ->
+                if (!continuation.isActive) {
+                    return@addOnCompleteListener
                 }
+
+                if (!task.isSuccessful) {
+                    continuation.resumeWithException(
+                        task.exception
+                            ?: IllegalStateException(
+                                "Firebase Installation ID 조회에 실패했습니다."
+                            )
+                    )
+                    return@addOnCompleteListener
+                }
+
+                val installationId = task.result
+
+                if (!installationId.isNullOrBlank()) {
+                    continuation.resume(installationId)
+                } else {
+                    continuation.resumeWithException(
+                        IllegalStateException(
+                            "Firebase Installation ID 조회에 실패했습니다."
+                        )
+                    )
+                }
+            }
         }
+    }
+
+    private fun createFileChooserIntent(
+        fileChooserParams: WebChromeClient.FileChooserParams
+    ): Intent {
+        val acceptTypes = fileChooserParams.acceptTypes
+            .filter { it.isNotBlank() }
+
+        val acceptsImage = acceptTypes.isEmpty() ||
+                acceptTypes.any {
+                    it == "*/*" ||
+                            it.startsWith("image/")
+                }
+
+        val cameraIntent = if (acceptsImage) {
+            createCameraCaptureIntent()
+        } else {
+            null
+        }
+
+        if (
+            fileChooserParams.isCaptureEnabled &&
+            cameraIntent != null
+        ) {
+            return cameraIntent
+        }
+
+        val fileIntent = runCatching {
+            fileChooserParams.createIntent()
+        }.getOrElse {
+            Intent(Intent.ACTION_GET_CONTENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = if (acceptsImage) "image/*" else "*/*"
+            }
+        }
+
+        if (
+            fileChooserParams.mode ==
+            WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE
+        ) {
+            fileIntent.putExtra(
+                Intent.EXTRA_ALLOW_MULTIPLE,
+                true
+            )
+        }
+
+        if (cameraIntent == null) {
+            return fileIntent
+        }
+
+        return Intent.createChooser(
+            fileIntent,
+            fileChooserParams.title ?: "사진 선택"
+        ).apply {
+            putExtra(
+                Intent.EXTRA_INITIAL_INTENTS,
+                arrayOf(cameraIntent)
+            )
+        }
+    }
+
+    private fun createCameraCaptureIntent(): Intent? {
+        val cameraDirectory = File(
+            cacheDir,
+            "camera"
+        )
+
+        if (
+            !cameraDirectory.exists() &&
+            !cameraDirectory.mkdirs()
+        ) {
+            return null
+        }
+
+        val cameraFile = runCatching {
+            File.createTempFile(
+                "tometa_",
+                ".jpg",
+                cameraDirectory
+            )
+        }.getOrNull() ?: return null
+
+        val cameraUri = runCatching {
+            FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                cameraFile
+            )
+        }.getOrElse {
+            cameraFile.delete()
+            return null
+        }
+
+        val cameraIntent = Intent(
+            MediaStore.ACTION_IMAGE_CAPTURE
+        ).apply {
+            putExtra(
+                MediaStore.EXTRA_OUTPUT,
+                cameraUri
+            )
+
+            clipData = ClipData.newRawUri(
+                "camera_image",
+                cameraUri
+            )
+
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+
+        if (
+            cameraIntent.resolveActivity(
+                packageManager
+            ) == null
+        ) {
+            cameraFile.delete()
+            return null
+        }
+
+        pendingCameraFile = cameraFile
+        pendingCameraUri = cameraUri
+
+        return cameraIntent
+    }
+
+    private fun completeFileChooser(
+        resultCode: Int,
+        data: Intent?
+    ) {
+        val callback =
+            pendingFileChooserCallback
+                ?: return
+
+        val cameraUri = pendingCameraUri
+
+        val selectedUris = when {
+            resultCode != Activity.RESULT_OK ->
+                null
+
+            data != null ->
+                WebChromeClient
+                    .FileChooserParams
+                    .parseResult(
+                        resultCode,
+                        data
+                    )
+
+            cameraUri != null ->
+                arrayOf(cameraUri)
+
+            else ->
+                null
+        }
+
+        val cameraImageSelected =
+            cameraUri != null &&
+                    selectedUris
+                        ?.any {
+                            it == cameraUri
+                        } == true
+
+        if (!cameraImageSelected) {
+            pendingCameraFile?.delete()
+        }
+
+        callback.onReceiveValue(
+            selectedUris
+        )
+
+        pendingFileChooserCallback =
+            null
+        pendingCameraUri =
+            null
+        pendingCameraFile =
+            null
+    }
+
+    private fun cancelPendingFileChooser() {
+        pendingFileChooserCallback
+            ?.onReceiveValue(null)
+
+        pendingCameraFile?.delete()
+
+        pendingFileChooserCallback =
+            null
+        pendingCameraUri =
+            null
+        pendingCameraFile =
+            null
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -711,6 +716,21 @@ class MainActivity : ComponentActivity() {
         var canGoBack by remember {
             mutableStateOf(false)
         }
+
+        val fileChooserLauncher =
+            rememberLauncherForActivityResult(
+                contract =
+                    ActivityResultContracts
+                        .StartActivityForResult()
+            ) { result ->
+
+                completeFileChooser(
+                    resultCode =
+                        result.resultCode,
+                    data =
+                        result.data
+                )
+            }
 
         val pushPermissionLauncher =
             rememberLauncherForActivityResult(
@@ -945,7 +965,7 @@ class MainActivity : ComponentActivity() {
                     settings.allowFileAccess =
                         false
                     settings.allowContentAccess =
-                        false
+                        true
 
                     val bridgeAttached =
                         HealthConnectWebBridge(
@@ -1037,6 +1057,51 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         ).attach(this)
+
+                    webChromeClient =
+                        object :
+                            WebChromeClient() {
+
+                            override fun onShowFileChooser(
+                                webView: WebView,
+                                filePathCallback:
+                                ValueCallback<Array<Uri>>,
+                                fileChooserParams:
+                                FileChooserParams
+                            ): Boolean {
+                                cancelPendingFileChooser()
+
+                                pendingFileChooserCallback =
+                                    filePathCallback
+
+                                val chooserIntent =
+                                    runCatching {
+                                        createFileChooserIntent(
+                                            fileChooserParams
+                                        )
+                                    }.getOrElse {
+                                        cancelPendingFileChooser()
+                                        return true
+                                    }
+
+                                return try {
+                                    fileChooserLauncher.launch(
+                                        chooserIntent
+                                    )
+                                    true
+                                } catch (
+                                    _: ActivityNotFoundException
+                                ) {
+                                    cancelPendingFileChooser()
+                                    true
+                                } catch (
+                                    _: SecurityException
+                                ) {
+                                    cancelPendingFileChooser()
+                                    true
+                                }
+                            }
+                        }
 
                     webViewClient =
                         object :
@@ -1167,6 +1232,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     currentWebView = null
                 }
+
+                cancelPendingFileChooser()
 
                 pendingPermissionReplyProxy
                     ?.let { replyProxy ->
