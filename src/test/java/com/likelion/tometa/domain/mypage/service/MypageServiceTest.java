@@ -3,6 +3,7 @@ package com.likelion.tometa.domain.mypage.service;
 import com.likelion.tometa.domain.health.repository.HealthConnectionRepository;
 import com.likelion.tometa.domain.mypage.dto.request.NotificationSettingsUpdateRequestDto;
 import com.likelion.tometa.domain.mypage.dto.response.MypageResponseDto;
+import com.likelion.tometa.domain.mypage.dto.response.UserProfileResponseDto;
 import com.likelion.tometa.domain.user.code.UserErrorCode;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.entity.UserNotificationSetting;
@@ -113,6 +114,37 @@ class MypageServiceTest {
         assertNull(result.notificationSettings().recordReminderTime());
         assertFalse(result.notificationSettings().weeklyReportEnabled());
         assertNull(result.notificationSettings().weeklyReportTime());
+    }
+
+    @Test
+    void getUserProfile_returnsCurrentProfile() {
+        User profileUser = User.builder()
+                .nickname("김도영")
+                .gender("male")
+                .ageGroup("20s")
+                .skinType("dry")
+                .build();
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(profileUser);
+
+        UserProfileResponseDto result = mypageService.getUserProfile(SESSION_TOKEN);
+
+        assertEquals("김도영", result.nickname());
+        assertEquals("male", result.gender());
+        assertEquals("20s", result.ageGroup());
+        assertEquals("dry", result.skinType());
+    }
+
+    @Test
+    void getUserProfile_allowsNullFieldsBeforeProfileRegistration() {
+        User profileUser = User.builder().build();
+        when(sessionUserResolver.resolve(SESSION_TOKEN)).thenReturn(profileUser);
+
+        UserProfileResponseDto result = mypageService.getUserProfile(SESSION_TOKEN);
+
+        assertNull(result.nickname());
+        assertNull(result.gender());
+        assertNull(result.ageGroup());
+        assertNull(result.skinType());
     }
 
     @Test
