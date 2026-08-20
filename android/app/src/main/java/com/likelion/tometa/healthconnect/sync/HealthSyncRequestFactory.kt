@@ -19,27 +19,14 @@ class HealthSyncRequestFactory(
         endDateExclusive: LocalDate,
         zoneId: ZoneId
     ): HealthSyncRequestDto {
-
         val sleepRecords =
             healthConnectReader.readSleepRecords(
                 startTime,
                 endTime
             )
 
-        val heartRateRecords =
-            healthConnectReader.readHeartRateRecords(
-                startTime,
-                endTime
-            )
-
-        val exerciseRecords =
-            healthConnectReader.readExerciseRecords(
-                startTime,
-                endTime
-            )
-
-        val dailySteps =
-            healthConnectReader.readDailySteps(
+        val dailyHealthSummaries =
+            healthConnectReader.readDailyHealthSummaries(
                 startDate = startDate,
                 endDateExclusive = endDateExclusive,
                 endTime = endTime,
@@ -47,33 +34,14 @@ class HealthSyncRequestFactory(
             )
 
         return withContext(Dispatchers.Default) {
-
-            val records = buildList {
-
-                addAll(
-                    sleepRecords.map(
-                        HealthSyncMapper::fromSleep
-                    )
-                )
-
-                addAll(
-                    heartRateRecords.map(
-                        HealthSyncMapper::fromHeartRate
-                    )
-                )
-
-                addAll(
-                    exerciseRecords.map(
-                        HealthSyncMapper::fromExercise
-                    )
-                )
-            }
-
             HealthSyncRequestDto(
-                records = records,
-                dailySteps = dailySteps.map(
-                    HealthSyncMapper::fromDailySteps
-                )
+                records = sleepRecords.map(
+                    HealthSyncMapper::fromSleep
+                ),
+                dailyHealthSummaries =
+                    dailyHealthSummaries.map(
+                        HealthSyncMapper::fromDailyHealthSummary
+                    )
             )
         }
     }

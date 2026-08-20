@@ -5,5 +5,5 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class HealthSyncRequestDto(
     val records: List<HealthRawRecordSyncDto>,
-    val dailySteps: List<DailyStepsSyncDto>
+    val dailyHealthSummaries: List<DailyHealthSummarySyncDto>
 )

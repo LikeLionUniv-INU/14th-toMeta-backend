@@ -10,7 +10,7 @@ public record HealthSyncRequestDto(
         @NotNull(message = "동기화 데이터 목록은 필수입니다.")
         List<@NotNull(message = "동기화 레코드는 null일 수 없습니다.") @Valid HealthRawRecordRequestDto> records,
 
-        @NotNull(message = "일별 걸음 수 목록은 필수입니다.")
-        List<@NotNull(message = "일별 걸음 수 데이터는 null일 수 없습니다.") @Valid DailyStepsRequestDto> dailySteps
+        @NotNull(message = "일별 헬스 요약 목록은 필수입니다.")
+        List<@NotNull(message = "일별 헬스 요약은 null일 수 없습니다.") @Valid DailyHealthSummaryRequestDto> dailyHealthSummaries
 ) {
 }

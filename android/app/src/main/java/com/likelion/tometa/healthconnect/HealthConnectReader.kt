@@ -1,19 +1,23 @@
 package com.likelion.tometa.healthconnect
 
 import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.HealthConnectFeatures
 import androidx.health.connect.client.records.ExerciseSessionRecord
-import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.MenstruationPeriodRecord
+import androidx.health.connect.client.records.OxygenSaturationRecord
 import androidx.health.connect.client.records.Record
+import androidx.health.connect.client.records.SkinTemperatureRecord
 import androidx.health.connect.client.records.SleepSessionRecord
-import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
-import com.likelion.tometa.healthconnect.model.DailySteps
-import com.likelion.tometa.healthconnect.model.HealthConnectReadSummary
+import com.likelion.tometa.healthconnect.model.DailyHealthSummary
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
+import kotlin.math.roundToInt
 import kotlin.reflect.KClass
 
 class HealthConnectReader(
@@ -31,41 +35,56 @@ class HealthConnectReader(
         )
     }
 
-    suspend fun readHeartRateRecords(
-        startTime: Instant,
-        endTime: Instant
-    ): List<HeartRateRecord> {
-        return readAllRecords(
-            recordType = HeartRateRecord::class,
-            startTime = startTime,
-            endTime = endTime
-        )
-    }
-
-    suspend fun readExerciseRecords(
-        startTime: Instant,
-        endTime: Instant
-    ): List<ExerciseSessionRecord> {
-        return readAllRecords(
-            recordType = ExerciseSessionRecord::class,
-            startTime = startTime,
-            endTime = endTime
-        )
-    }
-
-    suspend fun readDailySteps(
+    suspend fun readDailyHealthSummaries(
         startDate: LocalDate,
         endDateExclusive: LocalDate,
         endTime: Instant,
         zoneId: ZoneId
-    ): List<DailySteps> {
+    ): List<DailyHealthSummary> {
+        val client = healthConnectManager.getClient()
 
-        val results = mutableListOf<DailySteps>()
+        val startTime = startDate
+            .atStartOfDay(zoneId)
+            .toInstant()
 
+        val oxygenSaturationRecords = readAllRecords(
+            recordType = OxygenSaturationRecord::class,
+            startTime = startTime,
+            endTime = endTime
+        )
+
+        val menstruationPeriodStarts = readAllRecords(
+            recordType = MenstruationPeriodRecord::class,
+            startTime = startTime,
+            endTime = endTime
+        )
+            .map {
+                it.startTime
+                    .atZone(zoneId)
+                    .toLocalDate()
+            }
+            .distinct()
+            .sorted()
+
+        val skinTemperatureRecords =
+            if (
+                client.features.getFeatureStatus(
+                    HealthConnectFeatures.FEATURE_SKIN_TEMPERATURE
+                ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+            ) {
+                readAllRecords(
+                    recordType = SkinTemperatureRecord::class,
+                    startTime = startTime,
+                    endTime = endTime
+                )
+            } else {
+                emptyList()
+            }
+
+        val results = mutableListOf<DailyHealthSummary>()
         var date = startDate
 
         while (date.isBefore(endDateExclusive)) {
-
             val dayStartTime = date
                 .atStartOfDay(zoneId)
                 .toInstant()
@@ -86,27 +105,46 @@ class HealthConnectReader(
                 break
             }
 
-            val response = healthConnectManager
-                .getClient()
-                .aggregate(
-                    AggregateRequest(
-                        metrics = setOf(
-                            StepsRecord.COUNT_TOTAL
-                        ),
-                        timeRangeFilter = TimeRangeFilter.between(
-                            dayStartTime,
-                            dayEndTime
-                        )
+            val aggregate = client.aggregate(
+                AggregateRequest(
+                    metrics = setOf(
+                        SleepSessionRecord.SLEEP_DURATION_TOTAL,
+                        ExerciseSessionRecord.EXERCISE_DURATION_TOTAL,
+                        TotalCaloriesBurnedRecord.ENERGY_TOTAL
+                    ),
+                    timeRangeFilter = TimeRangeFilter.between(
+                        dayStartTime,
+                        dayEndTime
                     )
                 )
-
-            val totalSteps =
-                response[StepsRecord.COUNT_TOTAL] ?: 0L
+            )
 
             results.add(
-                DailySteps(
+                DailyHealthSummary(
                     date = date,
-                    totalSteps = totalSteps
+                    sleepMinutes = aggregate[
+                        SleepSessionRecord.SLEEP_DURATION_TOTAL
+                    ]?.toMinutes()?.toInt(),
+                    skinTemperatureCelsius = calculateAverageSkinTemperature(
+                        records = skinTemperatureRecords,
+                        startTime = dayStartTime,
+                        endTime = dayEndTime
+                    ),
+                    exerciseMinutes = aggregate[
+                        ExerciseSessionRecord.EXERCISE_DURATION_TOTAL
+                    ]?.toMinutes()?.toInt(),
+                    totalCaloriesBurned = aggregate[
+                        TotalCaloriesBurnedRecord.ENERGY_TOTAL
+                    ]?.inKilocalories?.roundToInt(),
+                    menstrualCycleDay = calculateMenstrualCycleDay(
+                        date = date,
+                        periodStarts = menstruationPeriodStarts
+                    ),
+                    avgSpo2 = calculateAverageSpo2(
+                        records = oxygenSaturationRecords,
+                        startTime = dayStartTime,
+                        endTime = dayEndTime
+                    )
                 )
             )
 
@@ -116,41 +154,80 @@ class HealthConnectReader(
         return results
     }
 
-    suspend fun readSummary(
+    private fun calculateAverageSpo2(
+        records: List<OxygenSaturationRecord>,
         startTime: Instant,
-        endTime: Instant,
-        startDate: LocalDate,
-        endDateExclusive: LocalDate,
-        zoneId: ZoneId
-    ): HealthConnectReadSummary {
+        endTime: Instant
+    ): Double? {
+        val values = records
+            .asSequence()
+            .filter {
+                !it.time.isBefore(startTime) &&
+                        it.time.isBefore(endTime)
+            }
+            .map {
+                it.percentage.value
+            }
+            .toList()
 
-        val sleepRecords =
-            readSleepRecords(startTime, endTime)
+        return values
+            .takeIf {
+                it.isNotEmpty()
+            }
+            ?.average()
+            ?.roundToTwoDecimals()
+    }
 
-        val heartRateRecords =
-            readHeartRateRecords(startTime, endTime)
+    private fun calculateAverageSkinTemperature(
+        records: List<SkinTemperatureRecord>,
+        startTime: Instant,
+        endTime: Instant
+    ): Double? {
+        val values = mutableListOf<Double>()
 
-        val exerciseRecords =
-            readExerciseRecords(startTime, endTime)
+        records.forEach { record ->
+            val baseline = record.baseline?.inCelsius
+                ?: return@forEach
 
-        val dailySteps =
-            readDailySteps(
-                startDate = startDate,
-                endDateExclusive = endDateExclusive,
-                endTime = endTime,
-                zoneId = zoneId
-            )
+            record.deltas
+                .filter {
+                    !it.time.isBefore(startTime) &&
+                            it.time.isBefore(endTime)
+                }
+                .forEach {
+                    values.add(
+                        baseline + it.delta.inCelsius
+                    )
+                }
+        }
 
-        return HealthConnectReadSummary(
-            sleepRecordCount = sleepRecords.size,
-            heartRateRecordCount = heartRateRecords.size,
-            heartRateSampleCount =
-                heartRateRecords.sumOf {
-                    it.samples.size
-                },
-            exerciseRecordCount = exerciseRecords.size,
-            dailySteps = dailySteps
-        )
+        return values
+            .takeIf {
+                it.isNotEmpty()
+            }
+            ?.average()
+            ?.roundToTwoDecimals()
+    }
+
+    private fun calculateMenstrualCycleDay(
+        date: LocalDate,
+        periodStarts: List<LocalDate>
+    ): Int? {
+        val latestPeriodStart = periodStarts
+            .lastOrNull {
+                !it.isAfter(date)
+            }
+            ?: return null
+
+        val daysFromStart = ChronoUnit.DAYS.between(
+            latestPeriodStart,
+            date
+        ).toInt()
+
+        return Math.floorMod(
+            daysFromStart,
+            MENSTRUAL_CYCLE_LENGTH
+        ) + 1
     }
 
     private suspend fun <T : Record> readAllRecords(
@@ -158,16 +235,13 @@ class HealthConnectReader(
         startTime: Instant,
         endTime: Instant
     ): List<T> {
-
         val client: HealthConnectClient =
             healthConnectManager.getClient()
 
         val records = mutableListOf<T>()
-
         var pageToken: String? = null
 
         do {
-
             val response = client.readRecords(
                 ReadRecordsRequest(
                     recordType = recordType,
@@ -181,15 +255,18 @@ class HealthConnectReader(
             )
 
             records.addAll(response.records)
-
             pageToken = response.pageToken
-
         } while (pageToken != null)
 
         return records
     }
 
+    private fun Double.roundToTwoDecimals(): Double {
+        return (this * 100.0).roundToInt() / 100.0
+    }
+
     companion object {
         private const val PAGE_SIZE = 1000
+        private const val MENSTRUAL_CYCLE_LENGTH = 28
     }
 }
