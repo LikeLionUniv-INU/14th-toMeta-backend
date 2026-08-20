@@ -1,16 +1,17 @@
 package com.likelion.tometa
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.webkit.WebViewCompat
-import androidx.webkit.WebViewFeature
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -22,6 +23,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
+import java.io.ByteArrayInputStream
 
 class MainActivity : ComponentActivity() {
 
@@ -53,10 +57,9 @@ class MainActivity : ComponentActivity() {
 
         // 화면 재생성 시 현재 WebView 페이지와 방문 기록을 보존
         currentWebView?.let { webView ->
-            // WebView 상태 저장이 실패하더라도 현재 URL은 복원할 수 있도록 저장
-            webView.url?.let {
-                outState.putString(WEB_VIEW_URL_KEY, it)
-            }
+            webView.url
+                ?.takeIf { isTrustedUrl(Uri.parse(it)) }
+                ?.let { outState.putString(WEB_VIEW_URL_KEY, it) }
 
             if (WebViewFeature.isFeatureSupported(WebViewFeature.SAVE_STATE)) {
                 val webViewState = Bundle()
@@ -74,9 +77,36 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // WebView 내부에서 허용할 React 배포 주소인지 확인
+    private fun isTrustedUrl(uri: Uri): Boolean {
+        val trustedUri = Uri.parse(WEB_URL)
+
+        return uri.scheme.equals(trustedUri.scheme, ignoreCase = true) &&
+                uri.host.equals(trustedUri.host, ignoreCase = true) &&
+                uri.port == trustedUri.port
+    }
+
+    // 외부 HTTP(S) 링크를 처리 가능한 시스템 브라우저로 전달
+    private fun openExternalUrl(context: Context, uri: Uri) {
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+
+        try {
+            if (intent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(intent)
+            }
+        } catch (_: ActivityNotFoundException) {
+            // 처리 가능한 앱이 없으면 현재 WebView 화면을 유지
+        }
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     @Composable
-    private fun ToMetaWebView(savedWebViewState: Bundle?, savedUrl: String?) {
+    private fun ToMetaWebView(
+        savedWebViewState: Bundle?,
+        savedUrl: String?
+    ) {
         var webView by remember {
             mutableStateOf<WebView?>(null)
         }
@@ -103,8 +133,6 @@ class MainActivity : ComponentActivity() {
                     // HTTPS 페이지에서 HTTP 리소스 로드를 차단
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
-                    val trustedHost = Uri.parse(WEB_URL).host
-
                     webViewClient = object : WebViewClient() {
 
                         // 페이지 이동 후 뒤로가기 가능 여부를 Compose 상태에 반영
@@ -123,37 +151,62 @@ class MainActivity : ComponentActivity() {
                             request: WebResourceRequest
                         ): Boolean {
                             val uri = request.url
-                            val host = uri.host ?: return true
-                            val isTrusted = uri.scheme == "https" && host == trustedHost
 
-                            // 신뢰하는 주소는 WebView 내부에서 처리
-                            if (isTrusted) {
+                            if (isTrustedUrl(uri)) {
                                 return false
                             }
 
-                            // 신뢰하지 않는 서브프레임 요청은 외부 브라우저를 열지 않고 차단
+                            // 신뢰하지 않는 서브프레임 요청은 차단
                             if (!request.isForMainFrame) {
                                 return true
                             }
 
                             // 메인 프레임의 외부 HTTP(S) 링크만 시스템 브라우저에서 처리
                             if (uri.scheme == "http" || uri.scheme == "https") {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, uri)
-                                )
+                                openExternalUrl(context, uri)
                             }
 
                             return true
                         }
+
+                        // 외부 도메인으로의 메인 프레임 POST 요청은 WebView에서 차단
+                        override fun shouldInterceptRequest(
+                            view: WebView?,
+                            request: WebResourceRequest
+                        ): WebResourceResponse? {
+                            if (
+                                request.isForMainFrame &&
+                                request.method.equals("POST", ignoreCase = true) &&
+                                !isTrustedUrl(request.url)
+                            ) {
+                                return WebResourceResponse(
+                                    "text/plain",
+                                    "UTF-8",
+                                    403,
+                                    "Forbidden",
+                                    emptyMap(),
+                                    ByteArrayInputStream(ByteArray(0))
+                                )
+                            }
+
+                            return super.shouldInterceptRequest(view, request)
+                        }
                     }
 
-                    // 저장된 WebView 상태가 있으면 복원하고 없으면 최초 페이지를 로드
+                    // 저장된 WebView 상태가 있으면 우선 방문 기록을 복원
                     val restored = savedWebViewState?.let {
                         restoreState(it)
                     } != null
 
                     if (!restored) {
-                        loadUrl(savedUrl ?: WEB_URL)
+                        // 저장 URL도 신뢰 주소인지 검증한 뒤 로드
+                        val urlToLoad = savedUrl
+                            ?.let(Uri::parse)
+                            ?.takeIf(::isTrustedUrl)
+                            ?.toString()
+                            ?: WEB_URL
+
+                        loadUrl(urlToLoad)
                     }
                 }
             },
