@@ -5,6 +5,7 @@ import com.likelion.tometa.domain.health.entity.HealthRawRecord;
 import com.likelion.tometa.domain.health.repository.DailyHealthSummaryRepository;
 import com.likelion.tometa.domain.health.repository.HealthRawRecordRepository;
 import com.likelion.tometa.domain.report.code.ReportErrorCode;
+import com.likelion.tometa.domain.report.dto.request.WeeklyReportNoteUpdateRequestDto;
 import com.likelion.tometa.domain.report.dto.response.WeeklyReportResponseDto;
 import com.likelion.tometa.domain.report.entity.WeeklyReport;
 import com.likelion.tometa.domain.report.entity.WeeklyReportAnalysis;
@@ -118,6 +119,27 @@ public class WeeklyReportService {
                 weeklyReport.getPersonalizedSolution(),
                 weeklyReport.getNote()
         );
+    }
+
+    @Transactional
+    public void updateNote(
+            Long reportId,
+            WeeklyReportNoteUpdateRequestDto request,
+            String sessionToken
+    ) {
+        User user = sessionUserResolver.resolve(sessionToken);
+
+        WeeklyReport weeklyReport = weeklyReportRepository
+                .findByIdAndUserAndReportStatus(reportId, user, COMPLETED)
+                .orElseThrow(() -> new GeneralException(
+                        ReportErrorCode.WEEKLY_REPORT_NOT_FOUND
+                ));
+
+        String note = request.note().isBlank()
+                ? null
+                : request.note();
+
+        weeklyReport.updateNote(note);
     }
 
     private List<WeeklyReportResponseDto.SleepSession> createSleepSessions(
