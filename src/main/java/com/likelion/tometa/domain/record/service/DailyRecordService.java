@@ -301,10 +301,12 @@ public class DailyRecordService {
                 ? validatedIds(request.nightCosmeticSetIds())
                 : existingNightSets;
 
-        if (morningCosmetics.isEmpty() && morningSets.isEmpty()
-                && nightCosmetics.isEmpty() && nightSets.isEmpty()) {
-            throw new GeneralException(GlobalErrorCode.BAD_REQUEST);
-        }
+        validateRequiredPeriodSelections(
+                morningCosmetics,
+                morningSets,
+                nightCosmetics,
+                nightSets
+        );
 
         String skinStatusValue = request.hasSkinStatus()
                 ? request.skinStatus()
@@ -929,14 +931,28 @@ public class DailyRecordService {
         validateNoDuplicates(request.morningCosmeticSetIds());
         validateNoDuplicates(request.nightCosmeticSetIds());
 
-        boolean noCosmeticSelection = request.morningCosmeticIds().isEmpty()
-                && request.nightCosmeticIds().isEmpty()
-                && request.morningCosmeticSetIds().isEmpty()
-                && request.nightCosmeticSetIds().isEmpty();
-        if (noCosmeticSelection) {
+        validateRequiredPeriodSelections(
+                request.morningCosmeticIds(),
+                request.morningCosmeticSetIds(),
+                request.nightCosmeticIds(),
+                request.nightCosmeticSetIds()
+        );
+        return skinStatus;
+    }
+
+    private void validateRequiredPeriodSelections(
+            List<Long> morningCosmeticIds,
+            List<Long> morningCosmeticSetIds,
+            List<Long> nightCosmeticIds,
+            List<Long> nightCosmeticSetIds
+    ) {
+        boolean noMorningSelection = morningCosmeticIds.isEmpty()
+                && morningCosmeticSetIds.isEmpty();
+        boolean noNightSelection = nightCosmeticIds.isEmpty()
+                && nightCosmeticSetIds.isEmpty();
+        if (noMorningSelection || noNightSelection) {
             throw new GeneralException(GlobalErrorCode.BAD_REQUEST);
         }
-        return skinStatus;
     }
 
     private void validateNoDuplicates(List<Long> ids) {

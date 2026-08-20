@@ -56,7 +56,7 @@ class DailyRecordControllerTest {
     }
 
     @Test
-    void createDailyRecord_acceptsOnlyMorningSelectionAndFiveImages() throws Exception {
+    void createDailyRecord_acceptsMorningAndNightSelectionsAndFiveImages() throws Exception {
         when(dailyRecordService.create(
                 any(DailyRecordCreateRequestDto.class),
                 eq("session-token")
@@ -74,7 +74,7 @@ class DailyRecordControllerTest {
                                   "skinStatus": "bad",
                                   "morningCosmeticIds": [12],
                                   "morningCosmeticSetIds": [3],
-                                  "nightCosmeticIds": [],
+                                  "nightCosmeticIds": [22],
                                   "foodMemo": "  아침에 마라탕  ",
                                   "imageKeys": ["key-1", "key-2", "key-3", "key-4", "key-5"],
                                   "memo": "  볼이 조금 따가웠음  "
