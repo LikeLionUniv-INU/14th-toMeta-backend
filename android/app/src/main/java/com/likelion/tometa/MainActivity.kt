@@ -681,27 +681,29 @@ class MainActivity : ComponentActivity() {
                             it == cameraUri
                         } == true
 
+        val cameraFile = pendingCameraFile
+
+        pendingFileChooserCallback =
+            null
+        pendingCameraUri =
+            null
+        pendingCameraFile =
+            null
+
         if (!cameraImageSelected) {
-            pendingCameraFile?.delete()
+            cameraFile?.delete()
         }
 
         callback.onReceiveValue(
             selectedUris
         )
-
-        pendingFileChooserCallback =
-            null
-        pendingCameraUri =
-            null
-        pendingCameraFile =
-            null
     }
 
     private fun cancelPendingFileChooser() {
-        pendingFileChooserCallback
-            ?.onReceiveValue(null)
-
-        pendingCameraFile?.delete()
+        val callback =
+            pendingFileChooserCallback
+        val cameraFile =
+            pendingCameraFile
 
         pendingFileChooserCallback =
             null
@@ -709,6 +711,12 @@ class MainActivity : ComponentActivity() {
             null
         pendingCameraFile =
             null
+
+        cameraFile?.delete()
+
+        callback?.onReceiveValue(
+            null
+        )
     }
 
     @SuppressLint("SetJavaScriptEnabled")
