@@ -5,10 +5,12 @@ import com.likelion.tometa.domain.report.dto.response.DailyReportGenerationRespo
 import com.likelion.tometa.domain.report.dto.response.DailyReportResponseDto;
 import com.likelion.tometa.domain.report.dto.response.MonthlyReportListResponseDto;
 import com.likelion.tometa.domain.report.dto.response.WeeklyReportGenerationResponseDto;
+import com.likelion.tometa.domain.report.dto.response.WeeklyReportResponseDto;
 import com.likelion.tometa.domain.report.service.DailyReportGenerationService;
 import com.likelion.tometa.domain.report.service.DailyReportService;
 import com.likelion.tometa.domain.report.service.MonthlyReportService;
 import com.likelion.tometa.domain.report.service.WeeklyReportGenerationService;
+import com.likelion.tometa.domain.report.service.WeeklyReportService;
 import com.likelion.tometa.domain.user.support.AnonymousSessionCookieProvider;
 import com.likelion.tometa.global.response.ApiResponse;
 import jakarta.validation.Valid;
@@ -35,26 +37,21 @@ public class ReportController {
     private final DailyReportService dailyReportService;
     private final DailyReportGenerationService dailyReportGenerationService;
     private final MonthlyReportService monthlyReportService;
+    private final WeeklyReportService weeklyReportService;
     private final WeeklyReportGenerationService weeklyReportGenerationService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<MonthlyReportListResponseDto>>
-    getMonthlyReports(
+    public ResponseEntity<ApiResponse<MonthlyReportListResponseDto>> getMonthlyReports(
             @RequestParam int year,
             @RequestParam int month,
             @CookieValue(
                     name = AnonymousSessionCookieProvider.COOKIE_NAME,
                     required = false
-            )
-            String sessionToken
+            ) String sessionToken
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                monthlyReportService.getMonthlyReports(
-                        year,
-                        month,
-                        sessionToken
-                ))
-        );
+                monthlyReportService.getMonthlyReports(year, month, sessionToken)
+        ));
     }
 
     @GetMapping("/daily/{date}")
@@ -64,28 +61,25 @@ public class ReportController {
             @CookieValue(
                     name = AnonymousSessionCookieProvider.COOKIE_NAME,
                     required = false
-            )
-            String sessionToken
+            ) String sessionToken
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                dailyReportService.getDailyReport(date, sessionToken))
-        );
+                dailyReportService.getDailyReport(date, sessionToken)
+        ));
     }
 
     @PostMapping("/daily/{date}/generate")
-    public ResponseEntity<ApiResponse<DailyReportGenerationResponseDto>>
-    generateDailyReport(
+    public ResponseEntity<ApiResponse<DailyReportGenerationResponseDto>> generateDailyReport(
             @PathVariable
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @CookieValue(
                     name = AnonymousSessionCookieProvider.COOKIE_NAME,
                     required = false
-            )
-            String sessionToken
+            ) String sessionToken
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                dailyReportGenerationService.generate(date, sessionToken))
-        );
+                dailyReportGenerationService.generate(date, sessionToken)
+        ));
     }
 
     @PatchMapping("/daily/{date}/note")
@@ -96,12 +90,23 @@ public class ReportController {
             @CookieValue(
                     name = AnonymousSessionCookieProvider.COOKIE_NAME,
                     required = false
-            )
-            String sessionToken
+            ) String sessionToken
     ) {
         dailyReportService.updateNote(date, request, sessionToken);
-
         return ResponseEntity.ok(ApiResponse.success());
+    }
+
+    @GetMapping("/weekly/{reportId}")
+    public ResponseEntity<ApiResponse<WeeklyReportResponseDto>> getWeeklyReport(
+            @PathVariable Long reportId,
+            @CookieValue(
+                    name = AnonymousSessionCookieProvider.COOKIE_NAME,
+                    required = false
+            ) String sessionToken
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                weeklyReportService.getWeeklyReport(reportId, sessionToken)
+        ));
     }
 
     @PostMapping("/weekly/{startDate}/generate")
@@ -111,9 +116,10 @@ public class ReportController {
             @CookieValue(
                     name = AnonymousSessionCookieProvider.COOKIE_NAME,
                     required = false
-            )
-            String sessionToken
+            ) String sessionToken
     ) {
-        return ResponseEntity.ok(ApiResponse.success(weeklyReportGenerationService.generate(startDate, sessionToken)));
+        return ResponseEntity.ok(ApiResponse.success(
+                weeklyReportGenerationService.generate(startDate, sessionToken)
+        ));
     }
 }

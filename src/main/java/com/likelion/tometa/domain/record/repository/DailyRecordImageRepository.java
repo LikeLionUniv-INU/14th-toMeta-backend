@@ -8,5 +8,11 @@ import java.util.List;
 
 public interface DailyRecordImageRepository extends JpaRepository<DailyRecordImage, Long> {
 
-    List<DailyRecordImage> findAllByDailyRecordOrderBySortOrderAsc(DailyRecord dailyRecord);
+    List<DailyRecordImage> findAllByDailyRecordOrderBySortOrderAsc(
+            DailyRecord dailyRecord
+    );
+
+    List<DailyRecordImage> findAllByDailyRecordIn(
+            List<DailyRecord> dailyRecords
+    );
 }
