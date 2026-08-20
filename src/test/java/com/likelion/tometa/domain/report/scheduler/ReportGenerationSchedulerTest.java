@@ -139,14 +139,19 @@ class ReportGenerationSchedulerTest {
         when(dailyReportGenerationService.generate(firstUser, reportDate))
                 .thenReturn(ReportGenerationResult.generated(null));
         when(dailyReportGenerationService.generate(nextUser, reportDate))
-                .thenReturn(ReportGenerationResult.alreadyCompleted(null));
+                .thenReturn(ReportGenerationResult.generated(null));
         when(pushNotificationService
                 .sendDailyReportNotification(1L, reportDate))
                 .thenThrow(new RuntimeException("notification failed"));
+        when(pushNotificationService
+                .sendDailyReportNotification(2L, reportDate))
+                .thenReturn(1);
 
         assertDoesNotThrow(scheduler::generateDailyReports);
 
         verify(dailyReportGenerationService).generate(nextUser, reportDate);
+        verify(pushNotificationService)
+                .sendDailyReportNotification(2L, reportDate);
     }
 
     @Test
