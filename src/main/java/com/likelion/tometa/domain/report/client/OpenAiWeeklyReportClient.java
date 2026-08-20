@@ -36,8 +36,9 @@ public class OpenAiWeeklyReportClient {
             - 운동 시간
             - 총 칼로리 소모량
             - 여성 사용자의 생리주기
-              - menstrualCycleDay: 현재 28일 주기의 몇 일째인지
-              - menstrualCycleLength: 28
+              - menstrualCycleDay: 값이 있을 때 현재 생리주기의 몇 일째인지
+              - menstrualCycleLength: menstrualCycleDay가 있으면 28, 없으면 null
+              - menstrualCycleDay가 없으면 생리주기를 추론하거나 분석 근거로 사용하지 않는다.
             - 남성 사용자의 평균 산소포화도
 
             하루의 데이터만 반복해서 설명하지 말고

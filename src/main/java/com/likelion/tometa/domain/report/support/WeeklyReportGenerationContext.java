@@ -39,6 +39,12 @@ public record WeeklyReportGenerationContext(
 
         private static final int CYCLE_LENGTH = 28;
 
+        public HealthSummary {
+            menstrualCycleLength = menstrualCycleDay == null
+                    ? null
+                    : CYCLE_LENGTH;
+        }
+
         public HealthSummary(
                 Integer sleepMinutes,
                 BigDecimal skinTemperature,
