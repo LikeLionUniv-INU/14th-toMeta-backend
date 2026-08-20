@@ -178,6 +178,9 @@ class DailyRecordServiceTest {
         assertEquals(List.of(1, 2), savedSets.stream()
                 .map(DailyRecordCosmeticSet::getSortOrder)
                 .toList());
+        assertEquals(List.of("morning", "morning"), savedSets.stream()
+                .map(DailyRecordCosmeticSet::getUsagePeriod)
+                .toList());
 
         ArgumentCaptor<Iterable<DailyRecordCosmeticSetItem>> setItemCaptor =
                 iterableCaptor();
@@ -200,6 +203,12 @@ class DailyRecordServiceTest {
         assertEquals(List.of(1, 2, 3, 4, 1), savedCosmetics.stream()
                 .map(DailyRecordCosmetic::getSortOrder)
                 .toList());
+        assertEquals(
+                List.of("morning", "morning", "morning", "morning", "night"),
+                savedCosmetics.stream()
+                        .map(DailyRecordCosmetic::getUsagePeriod)
+                        .toList()
+        );
 
         ArgumentCaptor<Iterable<DailyRecordSelection>> selectionCaptor = iterableCaptor();
         verify(dailyRecordSelectionRepository).saveAll(selectionCaptor.capture());
@@ -222,6 +231,12 @@ class DailyRecordServiceTest {
         assertEquals(List.of(1, 2, 1, 2, 1), savedSelections.stream()
                 .map(DailyRecordSelection::getSortOrder)
                 .toList());
+        assertEquals(
+                List.of("morning", "morning", "morning", "morning", "night"),
+                savedSelections.stream()
+                        .map(DailyRecordSelection::getUsagePeriod)
+                        .toList()
+        );
         assertEquals(List.of(
                         "set-3",
                         "set-8",
@@ -271,7 +286,23 @@ class DailyRecordServiceTest {
         DailyRecordCreateResponseDto result = dailyRecordService.create(request, SESSION_TOKEN);
 
         assertEquals(38L, result.recordId());
-        verify(dailyRecordCosmeticRepository).saveAll(any());
+        ArgumentCaptor<Iterable<DailyRecordCosmetic>> cosmeticCaptor = iterableCaptor();
+        verify(dailyRecordCosmeticRepository).saveAll(cosmeticCaptor.capture());
+        assertEquals(
+                List.of("morning", "night"),
+                toList(cosmeticCaptor.getValue()).stream()
+                        .map(DailyRecordCosmetic::getUsagePeriod)
+                        .toList()
+        );
+        ArgumentCaptor<Iterable<DailyRecordSelection>> selectionCaptor =
+                iterableCaptor();
+        verify(dailyRecordSelectionRepository).saveAll(selectionCaptor.capture());
+        assertEquals(
+                List.of("morning", "night"),
+                toList(selectionCaptor.getValue()).stream()
+                        .map(DailyRecordSelection::getUsagePeriod)
+                        .toList()
+        );
     }
 
     @Test
@@ -317,7 +348,31 @@ class DailyRecordServiceTest {
         );
 
         assertEquals(39L, result.recordId());
-        verify(dailyRecordCosmeticSetRepository).saveAll(any());
+        ArgumentCaptor<Iterable<DailyRecordCosmeticSet>> setCaptor = iterableCaptor();
+        verify(dailyRecordCosmeticSetRepository).saveAll(setCaptor.capture());
+        assertEquals(
+                List.of("morning", "night"),
+                toList(setCaptor.getValue()).stream()
+                        .map(DailyRecordCosmeticSet::getUsagePeriod)
+                        .toList()
+        );
+        ArgumentCaptor<Iterable<DailyRecordCosmetic>> cosmeticCaptor = iterableCaptor();
+        verify(dailyRecordCosmeticRepository).saveAll(cosmeticCaptor.capture());
+        assertEquals(
+                List.of("morning", "night"),
+                toList(cosmeticCaptor.getValue()).stream()
+                        .map(DailyRecordCosmetic::getUsagePeriod)
+                        .toList()
+        );
+        ArgumentCaptor<Iterable<DailyRecordSelection>> selectionCaptor =
+                iterableCaptor();
+        verify(dailyRecordSelectionRepository).saveAll(selectionCaptor.capture());
+        assertEquals(
+                List.of("morning", "night"),
+                toList(selectionCaptor.getValue()).stream()
+                        .map(DailyRecordSelection::getUsagePeriod)
+                        .toList()
+        );
     }
 
     @Test
@@ -337,7 +392,7 @@ class DailyRecordServiceTest {
         );
 
         assertSame(GlobalErrorCode.BAD_REQUEST, exception.getErrorCode());
-        verify(dailyRecordRepository, never()).saveAndFlush(any());
+        verifyNoRecordGraphWrites();
     }
 
     @Test
@@ -357,7 +412,7 @@ class DailyRecordServiceTest {
         );
 
         assertSame(GlobalErrorCode.BAD_REQUEST, exception.getErrorCode());
-        verify(dailyRecordRepository, never()).saveAndFlush(any());
+        verifyNoRecordGraphWrites();
     }
 
     @Test
@@ -377,7 +432,7 @@ class DailyRecordServiceTest {
         );
 
         assertSame(GlobalErrorCode.BAD_REQUEST, exception.getErrorCode());
-        verify(dailyRecordRepository, never()).saveAndFlush(any());
+        verifyNoRecordGraphWrites();
     }
 
     @Test
@@ -812,7 +867,7 @@ class DailyRecordServiceTest {
         );
 
         assertSame(GlobalErrorCode.BAD_REQUEST, exception.getErrorCode());
-        verify(dailyRecordSelectionRepository, never()).deleteAll(any());
+        verifyNoRecordGraphWrites();
     }
 
     @Test
@@ -845,7 +900,7 @@ class DailyRecordServiceTest {
         );
 
         assertSame(GlobalErrorCode.BAD_REQUEST, exception.getErrorCode());
-        verify(dailyRecordSelectionRepository, never()).deleteAll(any());
+        verifyNoRecordGraphWrites();
     }
 
     @Test
@@ -1068,14 +1123,24 @@ class DailyRecordServiceTest {
         ArgumentCaptor<Iterable<DailyRecordSelection>> selectionCaptor =
                 iterableCaptor();
         verify(dailyRecordSelectionRepository).saveAll(selectionCaptor.capture());
-        assertEquals(List.of(22L, 12L), toList(selectionCaptor.getValue()).stream()
+        List<DailyRecordSelection> savedSelections = toList(
+                selectionCaptor.getValue()
+        );
+        assertEquals(List.of(22L, 12L), savedSelections.stream()
                 .map(DailyRecordSelection::getSourceId)
+                .toList());
+        assertEquals(List.of("morning", "night"), savedSelections.stream()
+                .map(DailyRecordSelection::getUsagePeriod)
                 .toList());
         ArgumentCaptor<Iterable<DailyRecordCosmetic>> cosmeticCaptor =
                 iterableCaptor();
         verify(dailyRecordCosmeticRepository).saveAll(cosmeticCaptor.capture());
-        assertEquals(List.of(22L, 12L), toList(cosmeticCaptor.getValue()).stream()
+        List<DailyRecordCosmetic> savedCosmetics = toList(cosmeticCaptor.getValue());
+        assertEquals(List.of(22L, 12L), savedCosmetics.stream()
                 .map(snapshot -> snapshot.getUserCosmetic().getId())
+                .toList());
+        assertEquals(List.of("morning", "night"), savedCosmetics.stream()
+                .map(DailyRecordCosmetic::getUsagePeriod)
                 .toList());
         assertEquals(1L, report.getGenerationVersion());
     }
@@ -1196,6 +1261,7 @@ class DailyRecordServiceTest {
         DailyRecordCosmeticSet preservedSet = toList(setCaptor.getValue()).getFirst();
         assertEquals(3L, preservedSet.getSourceCosmeticSetId());
         assertEquals("historic set name", preservedSet.getSetNameSnapshot());
+        assertEquals("morning", preservedSet.getUsagePeriod());
 
         ArgumentCaptor<Iterable<DailyRecordCosmeticSetItem>> itemCaptor =
                 iterableCaptor();
@@ -1211,10 +1277,26 @@ class DailyRecordServiceTest {
         assertEquals(List.of(5L, 6L, 22L, 12L), rebuilt.stream()
                 .map(snapshot -> snapshot.getUserCosmetic().getId())
                 .toList());
+        assertEquals(
+                List.of("morning", "morning", "morning", "night"),
+                rebuilt.stream()
+                        .map(DailyRecordCosmetic::getUsagePeriod)
+                        .toList()
+        );
         assertEquals(memberSnapshot.getProductNameSnapshot(),
                 rebuilt.getFirst().getProductNameSnapshot());
         assertEquals(secondMemberSnapshot.getProductNameSnapshot(),
                 rebuilt.get(1).getProductNameSnapshot());
+
+        ArgumentCaptor<Iterable<DailyRecordSelection>> selectionCaptor =
+                iterableCaptor();
+        verify(dailyRecordSelectionRepository).saveAll(selectionCaptor.capture());
+        assertEquals(
+                List.of("morning", "morning", "night"),
+                toList(selectionCaptor.getValue()).stream()
+                        .map(DailyRecordSelection::getUsagePeriod)
+                        .toList()
+        );
     }
 
     @Test
@@ -1429,6 +1511,21 @@ class DailyRecordServiceTest {
                 .tagsSnapshot(List.of())
                 .sortOrder(1)
                 .build();
+    }
+
+    private void verifyNoRecordGraphWrites() {
+        verify(dailyRecordRepository, never()).saveAndFlush(any());
+        verify(dailyRecordCosmeticRepository, never()).saveAll(any());
+        verify(dailyRecordCosmeticSetRepository, never()).saveAll(any());
+        verify(dailyRecordCosmeticSetItemRepository, never()).saveAll(any());
+        verify(dailyRecordSelectionRepository, never()).saveAll(any());
+        verify(dailyRecordCosmeticRepository, never()).deleteAll(any());
+        verify(dailyRecordCosmeticSetRepository, never()).deleteAll(any());
+        verify(dailyRecordCosmeticSetItemRepository, never()).deleteAll(any());
+        verify(dailyRecordSelectionRepository, never()).deleteAll(any());
+        verify(imageAttachmentService, never()).attach(any(), any(), any());
+        verify(imageAttachmentService, never()).replace(any(), any(), any());
+        verify(dailyReportRepository, never()).save(any());
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
