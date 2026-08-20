@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 @Getter
 @Entity
@@ -38,6 +39,9 @@ public class WeeklyReport extends BaseTimeEntity {
     @Column(name = "week_end_date", nullable = false)
     private LocalDate weekEndDate;
 
+    @Column(name = "report_status", nullable = false, length = 20)
+    private String reportStatus;
+
     @Lob
     @Column(name = "weekly_summary", nullable = false, columnDefinition = "TEXT")
     private String weeklySummary;
@@ -55,25 +59,54 @@ public class WeeklyReport extends BaseTimeEntity {
     @Column(name = "regenerated_at")
     private LocalDateTime regeneratedAt;
 
+    @Column(name = "generation_started_at")
+    private LocalDateTime generationStartedAt;
+
     @Builder
     private WeeklyReport(
             User user,
             LocalDate weekStartDate,
-            LocalDate weekEndDate,
-            String weeklySummary,
-            String personalizedSolution
+            LocalDate weekEndDate
     ) {
         this.user = user;
         this.weekStartDate = weekStartDate;
         this.weekEndDate = weekEndDate;
-        this.weeklySummary = weeklySummary;
-        this.personalizedSolution = personalizedSolution;
+        this.reportStatus = "collecting";
+        this.weeklySummary = "";
+        this.personalizedSolution = "";
         this.generatedAt = LocalDateTime.now();
     }
 
-    public void regenerate(String weeklySummary, String personalizedSolution) {
+    public void markGenerating() {
+        this.reportStatus = "generating";
+        this.generationStartedAt = LocalDateTime.now()
+                .truncatedTo(ChronoUnit.MICROS);
+    }
+
+    public void markCollecting() {
+        this.reportStatus = "collecting";
+        this.generationStartedAt = null;
+    }
+
+    public void complete(
+            String weeklySummary,
+            String personalizedSolution
+    ) {
         this.weeklySummary = weeklySummary;
         this.personalizedSolution = personalizedSolution;
+        this.reportStatus = "completed";
+        this.generationStartedAt = null;
+        this.generatedAt = LocalDateTime.now();
+    }
+
+    public void regenerate(
+            String weeklySummary,
+            String personalizedSolution
+    ) {
+        this.weeklySummary = weeklySummary;
+        this.personalizedSolution = personalizedSolution;
+        this.reportStatus = "completed";
+        this.generationStartedAt = null;
         this.regeneratedAt = LocalDateTime.now();
     }
 
