@@ -32,23 +32,49 @@ public class UserService {
         AnonymousSession session = getValidSession(sessionToken);
         User user = session.getUser();
 
-        if (user.getProfileCompletedAt() == null) {
+        String nickname = request.hasNickname()
+                ? request.nickname()
+                : user.getNickname();
+        String gender = request.hasGender()
+                ? request.gender()
+                : user.getGender();
+        String ageGroup = request.hasAgeGroup()
+                ? request.ageGroup()
+                : user.getAgeGroup();
+        String skinType = request.hasSkinType()
+                ? request.skinType()
+                : user.getSkinType();
+
+        if (user.getProfileCompletedAt() == null
+                && isCompleteProfile(nickname, gender, ageGroup, skinType)) {
             user.completeProfile(
-                    request.nickname(),
-                    request.gender(),
-                    request.ageGroup(),
-                    request.skinType()
+                    nickname,
+                    gender,
+                    ageGroup,
+                    skinType
             );
         } else {
             user.updateProfile(
-                    request.nickname(),
-                    request.gender(),
-                    request.ageGroup(),
-                    request.skinType()
+                    nickname,
+                    gender,
+                    ageGroup,
+                    skinType
             );
         }
 
         session.touch();
+    }
+
+    private boolean isCompleteProfile(
+            String nickname,
+            String gender,
+            String ageGroup,
+            String skinType
+    ) {
+        return nickname != null
+                && gender != null
+                && ageGroup != null
+                && skinType != null;
     }
 
     @Transactional
