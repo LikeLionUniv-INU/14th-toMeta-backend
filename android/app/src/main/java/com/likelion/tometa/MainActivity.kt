@@ -323,11 +323,16 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch {
                 val result =
                     try {
-                        val hasPermissions =
-                            healthConnectManager
+                        if (
+                            !healthConnectManager
+                                .isAvailable()
+                        ) {
+                            HealthConnectWebBridge
+                                .RESULT_UNAVAILABLE
+                        } else if (
+                            !healthConnectManager
                                 .hasAllPermissions()
-
-                        if (!hasPermissions) {
+                        ) {
                             HealthConnectWebBridge
                                 .RESULT_SYNC_PERMISSION_MISSING
                         } else {
