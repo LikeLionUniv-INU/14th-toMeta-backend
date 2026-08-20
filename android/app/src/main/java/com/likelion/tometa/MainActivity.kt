@@ -28,9 +28,11 @@ import androidx.lifecycle.lifecycleScope
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import com.likelion.tometa.config.ToMetaEndpoint
 import com.likelion.tometa.healthconnect.HealthConnectManager
 import com.likelion.tometa.healthconnect.HealthConnectPermissions
 import com.likelion.tometa.healthconnect.HealthConnectReader
+import com.likelion.tometa.healthconnect.background.HealthSyncScheduler
 import com.likelion.tometa.healthconnect.device.DeviceIdProvider
 import com.likelion.tometa.healthconnect.network.HealthConnectApiClient
 import com.likelion.tometa.healthconnect.network.HealthConnectRepository
@@ -45,7 +47,6 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     companion object {
-        private const val WEB_URL = "https://14th-to-meta-frontend.vercel.app"
         private const val WEB_VIEW_STATE_KEY = "web_view_state"
         private const val WEB_VIEW_URL_KEY = "web_view_url"
         private const val ANONYMOUS_SESSION_COOKIE_NAME = "anonymous_session"
@@ -58,249 +59,200 @@ class MainActivity : ComponentActivity() {
     private var healthConnectJob: Job? = null
     private var healthSyncJob: Job? = null
     private lateinit var healthConnectManager: HealthConnectManager
+    private lateinit var healthDeviceTokenStore: HealthDeviceTokenStore
     private lateinit var healthConnectRepository: HealthConnectRepository
     private lateinit var healthSyncCoordinator: HealthSyncCoordinator
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        healthConnectManager =
-            HealthConnectManager(
-                applicationContext
-            )
+        healthConnectManager = HealthConnectManager(applicationContext)
+        healthDeviceTokenStore = HealthDeviceTokenStore(applicationContext)
+        healthConnectRepository = HealthConnectRepository(
+            api = HealthConnectApiClient.create(ToMetaEndpoint.API_BASE_URL),
+            deviceIdProvider = DeviceIdProvider(applicationContext),
+            healthDeviceTokenStore = healthDeviceTokenStore
+        )
+        healthSyncCoordinator = HealthSyncCoordinator(
+            requestFactory = HealthSyncRequestFactory(HealthConnectReader(healthConnectManager)),
+            healthConnectRepository = healthConnectRepository
+        )
 
-        healthConnectRepository =
-            HealthConnectRepository(
-                api = HealthConnectApiClient.create(
-                    "$WEB_URL/"
-                ),
-                deviceIdProvider =
-                    DeviceIdProvider(
-                        applicationContext
-                    ),
-                healthDeviceTokenStore =
-                    HealthDeviceTokenStore(
-                        applicationContext
-                    )
-            )
+        CookieManager.getInstance().setAcceptCookie(true)
 
-        healthSyncCoordinator =
-            HealthSyncCoordinator(
-                requestFactory =
-                    HealthSyncRequestFactory(
-                        HealthConnectReader(
-                            healthConnectManager
-                        )
-                    ),
-                healthConnectRepository =
-                    healthConnectRepository
-            )
-
-        CookieManager.getInstance()
-            .setAcceptCookie(true)
+        lifecycleScope.launch {
+            updateBackgroundSyncScheduleSafely()
+        }
 
         setContent {
             ToMetaWebView(
-                savedWebViewState =
-                    savedInstanceState?.getBundle(
-                        WEB_VIEW_STATE_KEY
-                    ),
-                savedUrl =
-                    savedInstanceState?.getString(
-                        WEB_VIEW_URL_KEY
-                    )
+                savedWebViewState = savedInstanceState?.getBundle(WEB_VIEW_STATE_KEY),
+                savedUrl = savedInstanceState?.getString(WEB_VIEW_URL_KEY)
             )
         }
     }
 
     @WebViewCompat.ExperimentalSaveState
-    override fun onSaveInstanceState(
-        outState: Bundle
-    ) {
-        super.onSaveInstanceState(
-            outState
-        )
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
 
         currentWebView?.let { webView ->
             webView.url
-                ?.takeIf {
-                    isTrustedUrl(
-                        Uri.parse(it)
-                    )
-                }
-                ?.let {
-                    outState.putString(
-                        WEB_VIEW_URL_KEY,
-                        it
-                    )
-                }
+                ?.takeIf { isTrustedUrl(Uri.parse(it)) }
+                ?.let { outState.putString(WEB_VIEW_URL_KEY, it) }
 
-            if (
-                WebViewFeature.isFeatureSupported(
-                    WebViewFeature.SAVE_STATE
-                )
-            ) {
-                val webViewState =
-                    Bundle()
-
-                WebViewCompat.saveState(
-                    webView,
-                    webViewState,
-                    MAX_WEB_VIEW_STATE_BYTES,
-                    false
-                )
-
-                outState.putBundle(
-                    WEB_VIEW_STATE_KEY,
-                    webViewState
-                )
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.SAVE_STATE)) {
+                val webViewState = Bundle()
+                WebViewCompat.saveState(webView, webViewState, MAX_WEB_VIEW_STATE_BYTES, false)
+                outState.putBundle(WEB_VIEW_STATE_KEY, webViewState)
             }
         }
     }
 
-    private fun isTrustedUrl(
-        uri: Uri
-    ): Boolean {
-        val trustedUri =
-            Uri.parse(WEB_URL)
-
-        return uri.scheme.equals(
-            trustedUri.scheme,
-            ignoreCase = true
-        ) &&
-                uri.host.equals(
-                    trustedUri.host,
-                    ignoreCase = true
-                ) &&
-                uri.port ==
-                trustedUri.port
+    private fun isTrustedUrl(uri: Uri): Boolean {
+        val trustedUri = Uri.parse(ToMetaEndpoint.WEB_URL)
+        return uri.scheme.equals(trustedUri.scheme, ignoreCase = true) &&
+                uri.host.equals(trustedUri.host, ignoreCase = true) &&
+                uri.port == trustedUri.port
     }
 
-    private fun openExternalUrl(
-        context: Context,
-        uri: Uri
-    ) {
-        val intent =
-            Intent(
-                Intent.ACTION_VIEW,
-                uri
-            ).apply {
-                addCategory(
-                    Intent.CATEGORY_BROWSABLE
-                )
-            }
+    private fun openExternalUrl(context: Context, uri: Uri) {
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
 
         try {
-            context.startActivity(
-                intent
-            )
+            context.startActivity(intent)
         } catch (_: ActivityNotFoundException) {
             // 처리 가능한 앱이 없으면 현재 WebView 화면 유지
         }
     }
 
-    private fun connectHealthDevice(
-        replyProxy: JavaScriptReplyProxy
-    ) {
-        val cookieHeader =
-            CookieManager.getInstance()
-                .getCookie(WEB_URL)
-
-        val anonymousSessionValue =
-            cookieHeader
-                ?.split(";")
-                ?.map { cookie ->
-                    cookie.trim()
-                }
-                ?.firstOrNull { cookie ->
-                    cookie.substringBefore("=") ==
-                            ANONYMOUS_SESSION_COOKIE_NAME
-                }
-                ?.substringAfter(
-                    "=",
-                    missingDelimiterValue = ""
-                )
-                ?.trim()
-
-        if (
-            cookieHeader.isNullOrBlank() ||
-            anonymousSessionValue.isNullOrBlank()
-        ) {
-            runCatching {
-                replyProxy.postMessage(
-                    HealthConnectWebBridge.RESULT_SESSION_MISSING
-                )
-            }
-
-            if (
-                pendingPermissionReplyProxy ===
-                replyProxy
-            ) {
-                pendingPermissionReplyProxy =
-                    null
-            }
-
+    private suspend fun updateBackgroundSyncSchedule() {
+        val hasToken = try {
+            !healthDeviceTokenStore.getToken().isNullOrBlank()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            HealthSyncScheduler.cancel(applicationContext)
             return
         }
 
-        val job =
-            lifecycleScope.launch {
-                val connectionSucceeded =
-                    try {
-                        healthConnectRepository.connect(
-                            cookieHeader
-                        )
+        if (!hasToken) {
+            HealthSyncScheduler.cancel(applicationContext)
+            return
+        }
 
-                        true
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        false
-                    }
+        /*
+         * Health Connect Provider가 업데이트 중이거나 일시적으로
+         * unavailable인 경우 기존 스케줄까지 제거하지 않는다.
+         */
+        if (!healthConnectManager.isAvailable()) {
+            return
+        }
 
-                if (
-                    pendingPermissionReplyProxy !==
-                    replyProxy
-                ) {
-                    return@launch
-                }
+        if (!healthConnectManager.isBackgroundReadAvailable()) {
+            HealthSyncScheduler.cancel(applicationContext)
+            return
+        }
 
-                runCatching {
-                    replyProxy.postMessage(
-                        if (connectionSucceeded) {
-                            HealthConnectWebBridge.RESULT_GRANTED
-                        } else {
-                            HealthConnectWebBridge.RESULT_CONNECTION_FAILED
-                        }
-                    )
-                }
+        val hasRequiredPermissions = try {
+            healthConnectManager.hasAllPermissions()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return
+        }
 
-                if (
-                    pendingPermissionReplyProxy ===
-                    replyProxy
-                ) {
-                    pendingPermissionReplyProxy =
-                        null
-                }
+        val hasBackgroundPermission = try {
+            healthConnectManager.hasBackgroundReadPermission()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return
+        }
+
+        if (!hasRequiredPermissions || !hasBackgroundPermission) {
+            HealthSyncScheduler.cancel(applicationContext)
+            return
+        }
+
+        HealthSyncScheduler.schedule(applicationContext)
+    }
+
+    private suspend fun updateBackgroundSyncScheduleSafely() {
+        try {
+            updateBackgroundSyncSchedule()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // 스케줄 갱신 실패는 연결 또는 데이터 동기화 결과에 영향을 주지 않는다.
+        }
+    }
+
+    private fun connectHealthDevice(replyProxy: JavaScriptReplyProxy) {
+        val cookieHeader = CookieManager.getInstance().getCookie(ToMetaEndpoint.WEB_URL)
+        val anonymousSessionValue = cookieHeader
+            ?.split(";")
+            ?.map { it.trim() }
+            ?.firstOrNull { it.substringBefore("=") == ANONYMOUS_SESSION_COOKIE_NAME }
+            ?.substringAfter("=", missingDelimiterValue = "")
+            ?.trim()
+
+        if (cookieHeader.isNullOrBlank() || anonymousSessionValue.isNullOrBlank()) {
+            runCatching {
+                replyProxy.postMessage(HealthConnectWebBridge.RESULT_SESSION_MISSING)
             }
 
-        healthConnectJob =
-            job
+            if (pendingPermissionReplyProxy === replyProxy) {
+                pendingPermissionReplyProxy = null
+            }
+            return
+        }
+
+        val job = lifecycleScope.launch {
+            val connectionSucceeded = try {
+                healthConnectRepository.connect(cookieHeader)
+                true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+
+            if (connectionSucceeded) {
+                updateBackgroundSyncScheduleSafely()
+            }
+
+            if (pendingPermissionReplyProxy !== replyProxy) {
+                return@launch
+            }
+
+            runCatching {
+                replyProxy.postMessage(
+                    if (connectionSucceeded) {
+                        HealthConnectWebBridge.RESULT_GRANTED
+                    } else {
+                        HealthConnectWebBridge.RESULT_CONNECTION_FAILED
+                    }
+                )
+            }
+
+            if (pendingPermissionReplyProxy === replyProxy) {
+                pendingPermissionReplyProxy = null
+            }
+        }
+
+        healthConnectJob = job
 
         job.invokeOnCompletion {
-            if (
-                healthConnectJob ===
-                job
-            ) {
-                healthConnectJob =
-                    null
+            if (healthConnectJob === job) {
+                healthConnectJob = null
             }
         }
     }
 
-    private fun syncHealthData(
-        replyProxy: JavaScriptReplyProxy
-    ) {
+    private fun syncHealthData(replyProxy: JavaScriptReplyProxy) {
         if (
             pendingPermissionReplyProxy != null ||
             healthConnectJob?.isActive == true ||
@@ -308,355 +260,251 @@ class MainActivity : ComponentActivity() {
             healthSyncJob?.isActive == true
         ) {
             runCatching {
-                replyProxy.postMessage(
-                    HealthConnectWebBridge.RESULT_SYNC_BUSY
-                )
+                replyProxy.postMessage(HealthConnectWebBridge.RESULT_SYNC_BUSY)
             }
-
             return
         }
 
-        pendingSyncReplyProxy =
-            replyProxy
+        pendingSyncReplyProxy = replyProxy
 
-        val job =
-            lifecycleScope.launch {
-                val result =
-                    try {
-                        if (
-                            !healthConnectManager
-                                .isAvailable()
-                        ) {
-                            HealthConnectWebBridge
-                                .RESULT_UNAVAILABLE
-                        } else if (
-                            !healthConnectManager
-                                .hasAllPermissions()
-                        ) {
-                            HealthConnectWebBridge
-                                .RESULT_SYNC_PERMISSION_MISSING
-                        } else {
-                            healthSyncCoordinator
-                                .syncRecent()
-
-                            HealthConnectWebBridge
-                                .RESULT_SYNC_SUCCESS
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        HealthConnectWebBridge
-                            .RESULT_SYNC_FAILED
-                    }
-
-                if (
-                    pendingSyncReplyProxy !==
-                    replyProxy
-                ) {
-                    return@launch
+        val job = lifecycleScope.launch {
+            val result = try {
+                if (!healthConnectManager.isAvailable()) {
+                    HealthConnectWebBridge.RESULT_UNAVAILABLE
+                } else if (!healthConnectManager.hasAllPermissions()) {
+                    HealthConnectWebBridge.RESULT_SYNC_PERMISSION_MISSING
+                } else {
+                    healthSyncCoordinator.syncRecent()
+                    HealthConnectWebBridge.RESULT_SYNC_SUCCESS
                 }
-
-                runCatching {
-                    replyProxy.postMessage(
-                        result
-                    )
-                }
-
-                if (
-                    pendingSyncReplyProxy ===
-                    replyProxy
-                ) {
-                    pendingSyncReplyProxy =
-                        null
-                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                HealthConnectWebBridge.RESULT_SYNC_FAILED
             }
 
-        healthSyncJob =
-            job
+            if (result == HealthConnectWebBridge.RESULT_SYNC_SUCCESS) {
+                updateBackgroundSyncScheduleSafely()
+            }
+
+            if (pendingSyncReplyProxy !== replyProxy) {
+                return@launch
+            }
+
+            runCatching {
+                replyProxy.postMessage(result)
+            }
+
+            if (pendingSyncReplyProxy === replyProxy) {
+                pendingSyncReplyProxy = null
+            }
+        }
+
+        healthSyncJob = job
 
         job.invokeOnCompletion {
-            if (
-                healthSyncJob ===
-                job
-            ) {
-                healthSyncJob =
-                    null
+            if (healthSyncJob === job) {
+                healthSyncJob = null
             }
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     @Composable
-    private fun ToMetaWebView(
-        savedWebViewState: Bundle?,
-        savedUrl: String?
-    ) {
-        var webView by remember {
-            mutableStateOf<WebView?>(
-                null
-            )
+    private fun ToMetaWebView(savedWebViewState: Bundle?, savedUrl: String?) {
+        var webView by remember { mutableStateOf<WebView?>(null) }
+        var canGoBack by remember { mutableStateOf(false) }
+
+        /*
+         * Background 권한은 필수 권한이 아니므로
+         * 사용자가 거부해도 Health Connect 연결은 계속 진행한다.
+         */
+        val backgroundPermissionLauncher = rememberLauncherForActivityResult(
+            contract = PermissionController.createRequestPermissionResultContract()
+        ) {
+            val replyProxy = pendingPermissionReplyProxy
+                ?: return@rememberLauncherForActivityResult
+
+            connectHealthDevice(replyProxy)
         }
 
-        var canGoBack by remember {
-            mutableStateOf(
-                false
+        val foregroundPermissionLauncher = rememberLauncherForActivityResult(
+            contract = PermissionController.createRequestPermissionResultContract()
+        ) { grantedPermissions ->
+            val replyProxy = pendingPermissionReplyProxy
+                ?: return@rememberLauncherForActivityResult
+
+            val allGranted = grantedPermissions.containsAll(
+                HealthConnectPermissions.READ_PERMISSIONS
             )
-        }
 
-        val permissionLauncher =
-            rememberLauncherForActivityResult(
-                contract =
-                    PermissionController
-                        .createRequestPermissionResultContract()
-            ) { grantedPermissions ->
-
-                val replyProxy =
-                    pendingPermissionReplyProxy
-
-                if (replyProxy != null) {
-                    val allGranted =
-                        grantedPermissions.containsAll(
-                            HealthConnectPermissions.READ_PERMISSIONS
-                        )
-
-                    if (!allGranted) {
-                        runCatching {
-                            replyProxy.postMessage(
-                                HealthConnectWebBridge.RESULT_DENIED
-                            )
-                        }
-
-                        pendingPermissionReplyProxy =
-                            null
-                    } else {
-                        connectHealthDevice(
-                            replyProxy
-                        )
-                    }
+            if (!allGranted) {
+                runCatching {
+                    replyProxy.postMessage(HealthConnectWebBridge.RESULT_DENIED)
                 }
+
+                pendingPermissionReplyProxy = null
+                return@rememberLauncherForActivityResult
             }
 
-        BackHandler(
-            enabled = canGoBack
-        ) {
+            lifecycleScope.launch {
+                val shouldRequestBackgroundPermission = try {
+                    healthConnectManager.isBackgroundReadAvailable() &&
+                            !healthConnectManager.hasBackgroundReadPermission()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    false
+                }
+
+                if (pendingPermissionReplyProxy !== replyProxy) {
+                    return@launch
+                }
+
+                if (shouldRequestBackgroundPermission) {
+                    backgroundPermissionLauncher.launch(
+                        HealthConnectPermissions.BACKGROUND_READ_PERMISSIONS
+                    )
+                } else {
+                    connectHealthDevice(replyProxy)
+                }
+            }
+        }
+
+        BackHandler(enabled = canGoBack) {
             webView?.goBack()
         }
 
         AndroidView(
-            modifier =
-                Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize(),
             factory = { context ->
                 WebView(context).apply {
-                    settings.javaScriptEnabled =
-                        true
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
 
-                    settings.domStorageEnabled =
-                        true
-
-                    settings.mixedContentMode =
-                        WebSettings.MIXED_CONTENT_NEVER_ALLOW
-
-                    settings.allowFileAccess =
-                        false
-
-                    settings.allowContentAccess =
-                        false
-
-                    val bridgeAttached =
-                        HealthConnectWebBridge(
-                            trustedOrigin =
-                                WEB_URL,
-                            healthConnectManager =
-                                healthConnectManager,
-                            onRequestPermissions = { replyProxy ->
-                                if (
-                                    pendingPermissionReplyProxy !=
-                                    null
-                                ) {
-                                    replyProxy.postMessage(
-                                        HealthConnectWebBridge.RESULT_BUSY
-                                    )
-                                } else {
-                                    pendingPermissionReplyProxy =
-                                        replyProxy
-
-                                    permissionLauncher.launch(
-                                        HealthConnectPermissions.READ_PERMISSIONS
-                                    )
-                                }
-                            },
-                            onRequestSync = { replyProxy ->
-                                syncHealthData(
-                                    replyProxy
+                    val bridgeAttached = HealthConnectWebBridge(
+                        trustedOrigin = ToMetaEndpoint.WEB_URL,
+                        healthConnectManager = healthConnectManager,
+                        onRequestPermissions = { replyProxy ->
+                            if (pendingPermissionReplyProxy != null) {
+                                replyProxy.postMessage(HealthConnectWebBridge.RESULT_BUSY)
+                            } else {
+                                pendingPermissionReplyProxy = replyProxy
+                                foregroundPermissionLauncher.launch(
+                                    HealthConnectPermissions.READ_PERMISSIONS
                                 )
                             }
-                        ).attach(this)
+                        },
+                        onRequestSync = { replyProxy ->
+                            syncHealthData(replyProxy)
+                        }
+                    ).attach(this)
 
-                    webViewClient =
-                        object : WebViewClient() {
+                    webViewClient = object : WebViewClient() {
 
-                            override fun onPageFinished(
-                                view: WebView?,
-                                url: String?
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+
+                            if (
+                                !bridgeAttached &&
+                                view != null &&
+                                url != null &&
+                                runCatching {
+                                    isTrustedUrl(Uri.parse(url))
+                                }.getOrDefault(false)
                             ) {
-                                super.onPageFinished(
-                                    view,
-                                    url
-                                )
-
-                                if (
-                                    !bridgeAttached &&
-                                    view != null &&
-                                    url != null &&
-                                    runCatching {
-                                        isTrustedUrl(
-                                            Uri.parse(url)
+                                view.evaluateJavascript(
+                                    """
+                                    window.__TOMETA_NATIVE_BRIDGE_STATUS__ = 'unsupported';
+                                    window.dispatchEvent(
+                                        new CustomEvent(
+                                            'tometa-native-bridge-status',
+                                            { detail: 'unsupported' }
                                         )
-                                    }.getOrDefault(false)
-                                ) {
-                                    view.evaluateJavascript(
-                                        """
-                                        window.__TOMETA_NATIVE_BRIDGE_STATUS__ = 'unsupported';
-                                        window.dispatchEvent(
-                                            new CustomEvent(
-                                                'tometa-native-bridge-status',
-                                                { detail: 'unsupported' }
-                                            )
-                                        );
-                                        """.trimIndent(),
-                                        null
-                                    )
-                                }
-                            }
-
-                            override fun doUpdateVisitedHistory(
-                                view: WebView?,
-                                url: String?,
-                                isReload: Boolean
-                            ) {
-                                super.doUpdateVisitedHistory(
-                                    view,
-                                    url,
-                                    isReload
+                                    );
+                                    """.trimIndent(),
+                                    null
                                 )
-
-                                canGoBack =
-                                    view?.canGoBack() ==
-                                            true
-                            }
-
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView,
-                                request: WebResourceRequest
-                            ): Boolean {
-                                val uri =
-                                    request.url
-
-                                if (
-                                    isTrustedUrl(
-                                        uri
-                                    )
-                                ) {
-                                    return false
-                                }
-
-                                if (
-                                    !request.isForMainFrame
-                                ) {
-                                    return true
-                                }
-
-                                if (
-                                    uri.scheme ==
-                                    "http" ||
-                                    uri.scheme ==
-                                    "https"
-                                ) {
-                                    openExternalUrl(
-                                        context,
-                                        uri
-                                    )
-                                }
-
-                                return true
                             }
                         }
 
-                    val restored =
-                        savedWebViewState?.let {
-                            restoreState(
-                                it
-                            )
-                        } != null
+                        override fun doUpdateVisitedHistory(
+                            view: WebView?,
+                            url: String?,
+                            isReload: Boolean
+                        ) {
+                            super.doUpdateVisitedHistory(view, url, isReload)
+                            canGoBack = view?.canGoBack() == true
+                        }
+
+                        override fun shouldOverrideUrlLoading(
+                            view: WebView,
+                            request: WebResourceRequest
+                        ): Boolean {
+                            val uri = request.url
+
+                            if (isTrustedUrl(uri)) {
+                                return false
+                            }
+
+                            if (!request.isForMainFrame) {
+                                return true
+                            }
+
+                            if (uri.scheme == "http" || uri.scheme == "https") {
+                                openExternalUrl(context, uri)
+                            }
+
+                            return true
+                        }
+                    }
+
+                    val restored = savedWebViewState?.let { restoreState(it) } != null
 
                     if (!restored) {
-                        val urlToLoad =
-                            savedUrl
-                                ?.let(
-                                    Uri::parse
-                                )
-                                ?.takeIf(
-                                    ::isTrustedUrl
-                                )
-                                ?.toString()
-                                ?: WEB_URL
+                        val urlToLoad = savedUrl
+                            ?.let(Uri::parse)
+                            ?.takeIf(::isTrustedUrl)
+                            ?.toString()
+                            ?: ToMetaEndpoint.WEB_URL
 
-                        loadUrl(
-                            urlToLoad
-                        )
+                        loadUrl(urlToLoad)
                     }
                 }
             },
             update = { view ->
-                webView =
-                    view
-
-                currentWebView =
-                    view
-
-                canGoBack =
-                    view.canGoBack()
+                webView = view
+                currentWebView = view
+                canGoBack = view.canGoBack()
             },
             onRelease = { view ->
-                if (
-                    currentWebView ===
-                    view
-                ) {
-                    currentWebView =
-                        null
+                if (currentWebView === view) {
+                    currentWebView = null
                 }
 
-                pendingPermissionReplyProxy
-                    ?.let { replyProxy ->
-                        runCatching {
-                            replyProxy.postMessage(
-                                HealthConnectWebBridge.RESULT_CANCELLED
-                            )
-                        }
+                pendingPermissionReplyProxy?.let { replyProxy ->
+                    runCatching {
+                        replyProxy.postMessage(HealthConnectWebBridge.RESULT_CANCELLED)
                     }
+                }
 
-                pendingSyncReplyProxy
-                    ?.let { replyProxy ->
-                        runCatching {
-                            replyProxy.postMessage(
-                                HealthConnectWebBridge.RESULT_CANCELLED
-                            )
-                        }
+                pendingSyncReplyProxy?.let { replyProxy ->
+                    runCatching {
+                        replyProxy.postMessage(HealthConnectWebBridge.RESULT_CANCELLED)
                     }
+                }
 
-                pendingPermissionReplyProxy =
-                    null
-
-                pendingSyncReplyProxy =
-                    null
+                pendingPermissionReplyProxy = null
+                pendingSyncReplyProxy = null
 
                 healthConnectJob?.cancel()
-                healthConnectJob =
-                    null
+                healthConnectJob = null
 
                 healthSyncJob?.cancel()
-                healthSyncJob =
-                    null
+                healthSyncJob = null
 
                 view.stopLoading()
                 view.removeAllViews()

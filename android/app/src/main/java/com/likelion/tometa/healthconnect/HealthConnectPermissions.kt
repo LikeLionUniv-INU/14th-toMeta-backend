@@ -14,4 +14,10 @@ object HealthConnectPermissions {
         HealthPermission.getReadPermission(ExerciseSessionRecord::class),
         HealthPermission.getReadPermission(StepsRecord::class)
     )
+
+    const val BACKGROUND_READ_PERMISSION =
+        HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
+
+    val BACKGROUND_READ_PERMISSIONS =
+        setOf(BACKGROUND_READ_PERMISSION)
 }

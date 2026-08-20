@@ -9,6 +9,7 @@ android {
     namespace = "com.likelion.tometa"
 
     compileSdk = 37
+
     defaultConfig {
         applicationId = "com.likelion.tometa"
         minSdk = 28
@@ -28,10 +29,12 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     buildFeatures {
         compose = true
     }
@@ -51,6 +54,7 @@ dependencies {
     implementation("androidx.health.connect:connect-client:1.2.0-alpha04")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.webkit:webkit:1.14.0")
+    implementation(libs.androidx.work.runtime.ktx)
 
     implementation(libs.kotlinx.serialization.json)
 
@@ -62,6 +66,7 @@ dependencies {
     implementation(libs.firebase.messaging)
 
     testImplementation(libs.junit)
+
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
