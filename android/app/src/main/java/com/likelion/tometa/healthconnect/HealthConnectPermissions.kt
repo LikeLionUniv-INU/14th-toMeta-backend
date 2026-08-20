@@ -19,6 +19,12 @@ object HealthConnectPermissions {
         HealthPermission.getReadPermission(SkinTemperatureRecord::class)
     )
 
+    const val HISTORY_READ_PERMISSION =
+        HealthPermission.PERMISSION_READ_HEALTH_DATA_HISTORY
+
+    val HISTORY_READ_PERMISSIONS =
+        setOf(HISTORY_READ_PERMISSION)
+
     const val BACKGROUND_READ_PERMISSION =
         HealthPermission.PERMISSION_READ_HEALTH_DATA_IN_BACKGROUND
 

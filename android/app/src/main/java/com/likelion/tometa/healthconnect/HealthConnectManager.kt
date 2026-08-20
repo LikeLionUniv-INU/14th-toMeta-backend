@@ -26,6 +26,18 @@ class HealthConnectManager(
         return HealthConnectClient.getOrCreate(context)
     }
 
+    fun isHistoryReadAvailable(): Boolean {
+        if (!isAvailable()) {
+            return false
+        }
+
+        return getClient()
+            .features
+            .getFeatureStatus(
+                HealthConnectFeatures.FEATURE_READ_HEALTH_DATA_HISTORY
+            ) == HealthConnectFeatures.FEATURE_STATUS_AVAILABLE
+    }
+
     fun isBackgroundReadAvailable(): Boolean {
         if (!isAvailable()) {
             return false
@@ -55,6 +67,18 @@ class HealthConnectManager(
         return grantedPermissions.containsAll(
             HealthConnectPermissions.READ_PERMISSIONS
         )
+    }
+
+    suspend fun hasHistoryReadPermission(): Boolean {
+        if (!isHistoryReadAvailable()) {
+            return false
+        }
+
+        val grantedPermissions =
+            getGrantedPermissions()
+
+        return HealthConnectPermissions.HISTORY_READ_PERMISSION in
+                grantedPermissions
     }
 
     suspend fun hasBackgroundReadPermission(): Boolean {

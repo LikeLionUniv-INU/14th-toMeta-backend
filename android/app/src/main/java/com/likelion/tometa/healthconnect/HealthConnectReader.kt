@@ -20,6 +20,8 @@ import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 import kotlin.reflect.KClass
 
+internal const val MENSTRUAL_CYCLE_LENGTH = 28
+
 class HealthConnectReader(
     private val healthConnectManager: HealthConnectManager
 ) {
@@ -47,6 +49,12 @@ class HealthConnectReader(
             .atStartOfDay(zoneId)
             .toInstant()
 
+        val menstruationStartTime =
+            calculateMenstruationQueryStart(
+                startDate = startDate,
+                zoneId = zoneId
+            )
+
         val oxygenSaturationRecords = readAllRecords(
             recordType = OxygenSaturationRecord::class,
             startTime = startTime,
@@ -55,7 +63,7 @@ class HealthConnectReader(
 
         val menstruationPeriodStarts = readAllRecords(
             recordType = MenstruationPeriodRecord::class,
-            startTime = startTime,
+            startTime = menstruationStartTime,
             endTime = endTime
         )
             .map {
@@ -209,27 +217,6 @@ class HealthConnectReader(
             ?.roundToTwoDecimals()
     }
 
-    private fun calculateMenstrualCycleDay(
-        date: LocalDate,
-        periodStarts: List<LocalDate>
-    ): Int? {
-        val latestPeriodStart = periodStarts
-            .lastOrNull {
-                !it.isAfter(date)
-            }
-            ?: return null
-
-        val daysFromStart = ChronoUnit.DAYS.between(
-            latestPeriodStart,
-            date
-        ).toInt()
-
-        return Math.floorMod(
-            daysFromStart,
-            MENSTRUAL_CYCLE_LENGTH
-        ) + 1
-    }
-
     private suspend fun <T : Record> readAllRecords(
         recordType: KClass<T>,
         startTime: Instant,
@@ -267,6 +254,36 @@ class HealthConnectReader(
 
     companion object {
         private const val PAGE_SIZE = 1000
-        private const val MENSTRUAL_CYCLE_LENGTH = 28
     }
+}
+
+internal fun calculateMenstruationQueryStart(
+    startDate: LocalDate,
+    zoneId: ZoneId
+): Instant {
+    return startDate
+        .minusDays(MENSTRUAL_CYCLE_LENGTH.toLong())
+        .atStartOfDay(zoneId)
+        .toInstant()
+}
+
+internal fun calculateMenstrualCycleDay(
+    date: LocalDate,
+    periodStarts: List<LocalDate>
+): Int? {
+    val latestPeriodStart = periodStarts
+        .lastOrNull {
+            !it.isAfter(date)
+        }
+        ?: return null
+
+    val daysFromStart = ChronoUnit.DAYS.between(
+        latestPeriodStart,
+        date
+    ).toInt()
+
+    return Math.floorMod(
+        daysFromStart,
+        MENSTRUAL_CYCLE_LENGTH
+    ) + 1
 }
