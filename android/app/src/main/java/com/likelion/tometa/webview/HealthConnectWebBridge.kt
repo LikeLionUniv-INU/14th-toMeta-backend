@@ -15,18 +15,40 @@ class HealthConnectWebBridge(
 ) {
 
     companion object {
-        const val JS_OBJECT_NAME = "ToMetaNative"
-        const val REQUEST_PERMISSIONS = "requestHealthConnectPermissions"
+        const val JS_OBJECT_NAME =
+            "ToMetaNative"
 
-        const val RESULT_GRANTED = "granted"
-        const val RESULT_DENIED = "denied"
-        const val RESULT_UNAVAILABLE = "unavailable"
-        const val RESULT_BUSY = "busy"
-        const val RESULT_UNSUPPORTED = "unsupported"
-        const val RESULT_CANCELLED = "cancelled"
+        const val REQUEST_PERMISSIONS =
+            "requestHealthConnectPermissions"
+
+        const val RESULT_GRANTED =
+            "granted"
+
+        const val RESULT_DENIED =
+            "denied"
+
+        const val RESULT_UNAVAILABLE =
+            "unavailable"
+
+        const val RESULT_BUSY =
+            "busy"
+
+        const val RESULT_UNSUPPORTED =
+            "unsupported"
+
+        const val RESULT_CANCELLED =
+            "cancelled"
+
+        const val RESULT_SESSION_MISSING =
+            "session_missing"
+
+        const val RESULT_CONNECTION_FAILED =
+            "connection_failed"
     }
 
-    fun attach(webView: WebView): Boolean {
+    fun attach(
+        webView: WebView
+    ): Boolean {
         if (
             !WebViewFeature.isFeatureSupported(
                 WebViewFeature.WEB_MESSAGE_LISTENER
@@ -39,27 +61,41 @@ class HealthConnectWebBridge(
             webView,
             JS_OBJECT_NAME,
             setOf(trustedOrigin)
-        ) { _, message, sourceOrigin, isMainFrame, replyProxy ->
+        ) {
+                _,
+                message,
+                sourceOrigin,
+                isMainFrame,
+                replyProxy ->
 
             // 신뢰된 Origin의 Main Frame 메시지만 처리
             if (
                 !isMainFrame ||
-                !isTrustedOrigin(sourceOrigin)
+                !isTrustedOrigin(
+                    sourceOrigin
+                )
             ) {
                 return@addWebMessageListener
             }
 
             // 문자열 메시지만 지원
-            if (message.type != WebMessageCompat.TYPE_STRING) {
+            if (
+                message.type !=
+                WebMessageCompat.TYPE_STRING
+            ) {
                 replyProxy.postMessage(
                     RESULT_UNSUPPORTED
                 )
+
                 return@addWebMessageListener
             }
 
             when (message.data) {
                 REQUEST_PERMISSIONS -> {
-                    if (!healthConnectManager.isAvailable()) {
+                    if (
+                        !healthConnectManager
+                            .isAvailable()
+                    ) {
                         replyProxy.postMessage(
                             RESULT_UNAVAILABLE
                         )
@@ -85,7 +121,9 @@ class HealthConnectWebBridge(
         sourceOrigin: Uri
     ): Boolean {
         val trustedUri =
-            Uri.parse(trustedOrigin)
+            Uri.parse(
+                trustedOrigin
+            )
 
         return sourceOrigin.scheme.equals(
             trustedUri.scheme,
@@ -95,6 +133,7 @@ class HealthConnectWebBridge(
                     trustedUri.host,
                     ignoreCase = true
                 ) &&
-                sourceOrigin.port == trustedUri.port
+                sourceOrigin.port ==
+                trustedUri.port
     }
 }
