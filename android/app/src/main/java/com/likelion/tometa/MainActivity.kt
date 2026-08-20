@@ -623,9 +623,9 @@ class MainActivity : ComponentActivity() {
         }
 
         if (
-            cameraIntent.resolveActivity(
-                packageManager
-            ) == null
+            !packageManager.hasSystemFeature(
+                PackageManager.FEATURE_CAMERA_ANY
+            )
         ) {
             cameraFile.delete()
             return null
@@ -647,20 +647,28 @@ class MainActivity : ComponentActivity() {
 
         val cameraUri = pendingCameraUri
 
+        val parsedUris = data?.let {
+            WebChromeClient
+                .FileChooserParams
+                .parseResult(
+                    resultCode,
+                    it
+                )
+        }
+
+        val capturedImageAvailable =
+            cameraUri != null &&
+                    (pendingCameraFile?.length() ?: 0L) > 0L
+
         val selectedUris = when {
             resultCode != Activity.RESULT_OK ->
                 null
 
-            data != null ->
-                WebChromeClient
-                    .FileChooserParams
-                    .parseResult(
-                        resultCode,
-                        data
-                    )
+            !parsedUris.isNullOrEmpty() ->
+                parsedUris
 
-            cameraUri != null ->
-                arrayOf(cameraUri)
+            capturedImageAvailable ->
+                arrayOf(cameraUri!!)
 
             else ->
                 null
