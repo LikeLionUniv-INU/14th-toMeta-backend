@@ -856,14 +856,17 @@ class DailyRecordServiceTest {
         when(dailyRecordRepository.findByUserAndRecordDateForUpdate(user, date))
                 .thenReturn(Optional.of(record));
         when(dailyRecordSelectionRepository.findAllByDailyRecord(record))
-                .thenReturn(List.of(selection(
-                        record,
-                        DailyRecordSelectionType.COSMETIC,
-                        12L,
-                        "product-12",
-                        List.of(),
-                        1
-                )));
+                .thenReturn(List.of(
+                        selection(
+                                record,
+                                DailyRecordSelectionType.COSMETIC,
+                                12L,
+                                "product-12",
+                                List.of(),
+                                1
+                        ),
+                        nightCosmeticSelection(record, cosmetic)
+                ));
         when(dailyRecordCosmeticRepository
                 .findAllByDailyRecordOrderByUsagePeriodAscSortOrderAsc(record))
                 .thenReturn(List.of(cosmeticSnapshot(record, cosmetic, "morning", 1)));
