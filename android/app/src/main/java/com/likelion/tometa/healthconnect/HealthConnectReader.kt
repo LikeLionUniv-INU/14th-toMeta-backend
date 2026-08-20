@@ -13,6 +13,7 @@ import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.likelion.tometa.healthconnect.model.DailyHealthSummary
+import kotlinx.coroutines.CancellationException
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -49,28 +50,37 @@ class HealthConnectReader(
             .atStartOfDay(zoneId)
             .toInstant()
 
-        val menstruationStartTime =
-            calculateMenstruationQueryStart(
-                startDate = startDate,
-                zoneId = zoneId
-            )
-
         val oxygenSaturationRecords = readAllRecords(
             recordType = OxygenSaturationRecord::class,
             startTime = startTime,
             endTime = endTime
         )
 
-        val menstruationPeriodStarts = readAllRecords(
-            recordType = MenstruationPeriodRecord::class,
-            startTime = menstruationStartTime,
-            endTime = endTime
-        )
-            .map {
-                it.startTime
-                    .atZone(zoneId)
-                    .toLocalDate()
+        val previousMenstruationPeriod =
+            readLatestMenstruationPeriodBefore(startTime)
+
+        val menstruationPeriodStarts = buildList {
+            previousMenstruationPeriod?.let {
+                add(
+                    it.startTime
+                        .atZone(zoneId)
+                        .toLocalDate()
+                )
             }
+
+            addAll(
+                readAllRecords(
+                    recordType = MenstruationPeriodRecord::class,
+                    startTime = startTime,
+                    endTime = endTime
+                )
+                    .map {
+                        it.startTime
+                            .atZone(zoneId)
+                            .toLocalDate()
+                    }
+            )
+        }
             .distinct()
             .sorted()
 
@@ -160,6 +170,33 @@ class HealthConnectReader(
         }
 
         return results
+    }
+
+    private suspend fun readLatestMenstruationPeriodBefore(
+        endTime: Instant
+    ): MenstruationPeriodRecord? {
+        if (!healthConnectManager.hasHistoryReadPermission()) {
+            return null
+        }
+
+        return try {
+            healthConnectManager
+                .getClient()
+                .readRecords(
+                    ReadRecordsRequest(
+                        recordType = MenstruationPeriodRecord::class,
+                        timeRangeFilter = TimeRangeFilter.before(endTime),
+                        ascendingOrder = false,
+                        pageSize = 1
+                    )
+                )
+                .records
+                .firstOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun calculateAverageSpo2(
@@ -255,16 +292,6 @@ class HealthConnectReader(
     companion object {
         private const val PAGE_SIZE = 1000
     }
-}
-
-internal fun calculateMenstruationQueryStart(
-    startDate: LocalDate,
-    zoneId: ZoneId
-): Instant {
-    return startDate
-        .minusDays(MENSTRUAL_CYCLE_LENGTH.toLong())
-        .atStartOfDay(zoneId)
-        .toInstant()
 }
 
 internal fun calculateMenstrualCycleDay(
