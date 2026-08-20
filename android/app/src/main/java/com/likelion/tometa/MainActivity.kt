@@ -104,11 +104,19 @@ class MainActivity : ComponentActivity() {
                         ): Boolean {
                             val uri = request.url
                             val host = uri.host ?: return true
+                            val isTrusted = uri.scheme == "https" && host == trustedHost
 
-                            if (uri.scheme == "https" && host == trustedHost) {
+                            // 신뢰하는 주소는 WebView 내부에서 처리
+                            if (isTrusted) {
                                 return false
                             }
 
+                            // 신뢰하지 않는 서브프레임 요청은 외부 브라우저를 열지 않고 차단
+                            if (!request.isForMainFrame) {
+                                return true
+                            }
+
+                            // 메인 프레임의 외부 HTTP(S) 링크만 시스템 브라우저에서 처리
                             if (uri.scheme == "http" || uri.scheme == "https") {
                                 context.startActivity(
                                     Intent(Intent.ACTION_VIEW, uri)
