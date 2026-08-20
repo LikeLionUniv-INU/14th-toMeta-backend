@@ -16,17 +16,24 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/record-images")
+@RequestMapping("/api")
 public class RecordImageController {
 
     private final RecordImageStorageService recordImageStorageService;
 
-    @PostMapping("/presigned-upload-url")
+    @PostMapping({
+            "/record-images/presigned-upload-url",
+            "/images/presigned-upload-urls"
+    })
     public ResponseEntity<ApiResponse<RecordImageUploadUrlResponseDto>> issueUploadUrl(
             @Valid @RequestBody RecordImageUploadUrlRequestDto request,
-            @CookieValue(name = AnonymousSessionCookieProvider.COOKIE_NAME, required = false) String sessionToken
+            @CookieValue(
+                    name = AnonymousSessionCookieProvider.COOKIE_NAME,
+                    required = false
+            ) String sessionToken
     ) {
-        RecordImageUploadUrlResponseDto result = recordImageStorageService.issueUploadUrl(request, sessionToken);
+        RecordImageUploadUrlResponseDto result =
+                recordImageStorageService.issueUploadUrl(request, sessionToken);
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 }
