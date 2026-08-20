@@ -2,8 +2,8 @@
 
 화장품 표시명은 응답을 생성할 때 아래 정책으로 만든다.
 
-- `brandName`이 있으면 `productName`은 `브랜드명 + 공백 + DB 화장품명`이다.
-- `brandName`이 `null`이거나 빈 문자열이면 `productName`은 DB 화장품명과 같다.
+- `brandName`이 있으면 앞뒤 공백을 제거하고, `productName`은 `브랜드명 + 공백 + DB 화장품명`으로 만든다.
+- `brandName`이 `null`, 빈 문자열 또는 공백으로만 구성된 문자열이면 브랜드 접두어 없이 DB 화장품명만 반환한다.
 - DB의 `product_name`과 `brand_name`은 각각 분리해서 저장한다.
 - 기존 응답의 `brandName` 필드는 유지한다. 검색 결과에서 브랜드를 확인할 수 없을 때의 값은 기존과 동일하게 `"-"`이다.
 

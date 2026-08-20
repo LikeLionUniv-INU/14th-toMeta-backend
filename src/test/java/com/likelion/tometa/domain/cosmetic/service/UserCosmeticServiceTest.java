@@ -178,17 +178,19 @@ class UserCosmeticServiceTest {
     }
 
     @Test
-    void createSearchedCosmetic_returnsOriginalProductNameWithoutBrand() {
-        CosmeticSearchCandidate candidate = searchedCandidate("진정 크림", null);
+    void createSearchedCosmetic_returnsOriginalProductNameForMissingBrand() {
         when(cosmeticProductRepository.save(any(CosmeticProduct.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(userCosmeticRepository.save(any(UserCosmetic.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        SearchedCosmeticCreateResponseDto result = userCosmeticService
-                .createSearchedCosmetic(user, candidate);
+        for (String brandName : new String[]{null, "", "   "}) {
+            CosmeticSearchCandidate candidate = searchedCandidate("진정 크림", brandName);
+            SearchedCosmeticCreateResponseDto result = userCosmeticService
+                    .createSearchedCosmetic(user, candidate);
 
-        assertEquals("진정 크림", result.productName());
+            assertEquals("진정 크림", result.productName());
+        }
     }
 
     @Test
