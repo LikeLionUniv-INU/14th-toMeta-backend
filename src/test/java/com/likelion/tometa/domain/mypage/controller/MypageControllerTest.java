@@ -1,5 +1,6 @@
 package com.likelion.tometa.domain.mypage.controller;
 
+import com.likelion.tometa.domain.mypage.dto.request.NotificationSettingsUpdateRequestDto;
 import com.likelion.tometa.domain.mypage.dto.response.MypageResponseDto;
 import com.likelion.tometa.domain.mypage.service.MypageService;
 import com.likelion.tometa.domain.user.code.UserErrorCode;
@@ -17,9 +18,13 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
 
 @ExtendWith(MockitoExtension.class)
 class MypageControllerTest {
@@ -120,6 +125,91 @@ class MypageControllerTest {
                 .getMypage(null);
 
         mockMvc.perform(get("/api/users/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "USER_4011",
+                          "message": "유효하지 않거나 만료된 사용자 세션입니다.",
+                          "result": null
+                        }
+                        """));
+    }
+
+    @Test
+    void updateNotificationSettings_returnsSuccess() throws Exception {
+        mockMvc.perform(patch("/api/users/me/notification-settings")
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "recordReminderEnabled": false
+                                }
+                                """)
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": true,
+                          "code": "COMMON_200",
+                          "message": "요청에 성공했습니다.",
+                          "result": null
+                        }
+                        """));
+
+        verify(mypageService).updateNotificationSettings(
+                new NotificationSettingsUpdateRequestDto(
+                        null,
+                        false,
+                        null,
+                        null,
+                        null
+                ),
+                "session-token"
+        );
+    }
+
+    @Test
+    void updateNotificationSettings_returnsInvalidTimeError() throws Exception {
+        doThrow(new GeneralException(UserErrorCode.INVALID_NOTIFICATION_TIME))
+                .when(mypageService)
+                .updateNotificationSettings(
+                        any(NotificationSettingsUpdateRequestDto.class),
+                        org.mockito.ArgumentMatchers.eq("session-token")
+                );
+
+        mockMvc.perform(patch("/api/users/me/notification-settings")
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "weeklyReportEnabled": true,
+                                  "weeklyReportTime": "24:00"
+                                }
+                                """)
+                        .cookie(new Cookie("anonymous_session", "session-token")))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().json("""
+                        {
+                          "isSuccess": false,
+                          "code": "USER_4002",
+                          "message": "알림 시간은 HH:mm 형식으로 입력해주세요.",
+                          "result": null
+                        }
+                        """));
+    }
+
+    @Test
+    void updateNotificationSettings_returnsUnauthorizedForMissingSession()
+            throws Exception {
+        doThrow(new GeneralException(UserErrorCode.INVALID_ANONYMOUS_SESSION))
+                .when(mypageService)
+                .updateNotificationSettings(
+                        any(NotificationSettingsUpdateRequestDto.class),
+                        isNull()
+                );
+
+        mockMvc.perform(patch("/api/users/me/notification-settings")
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().json("""
                         {
