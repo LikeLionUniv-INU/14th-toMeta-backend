@@ -1,8 +1,11 @@
 package com.likelion.tometa
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -20,36 +23,53 @@ import androidx.compose.ui.viewinterop.AndroidView
 
 class MainActivity : ComponentActivity() {
 
-    // WebView에서 로드할 React 배포 주소
     companion object {
         private const val WEB_URL = "https://14th-to-meta-frontend.vercel.app"
+        private const val WEB_VIEW_STATE_KEY = "web_view_state"
     }
+
+    private var currentWebView: WebView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 앱 실행 시 React WebView 화면을 표시
+        // WebView에서 anonymous_session 등의 Cookie 저장을 허용
+        CookieManager.getInstance().setAcceptCookie(true)
+
         setContent {
-            ToMetaWebView()
+            ToMetaWebView(
+                savedWebViewState = savedInstanceState?.getBundle(WEB_VIEW_STATE_KEY)
+            )
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+
+        // 화면 재생성 시 현재 WebView 페이지와 방문 기록을 보존
+        currentWebView?.let { webView ->
+            val webViewState = Bundle()
+            webView.saveState(webViewState)
+            outState.putBundle(WEB_VIEW_STATE_KEY, webViewState)
         }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     @Composable
-    private fun ToMetaWebView() {
-        // 뒤로가기 처리를 위해 현재 WebView 인스턴스를 저장
+    private fun ToMetaWebView(savedWebViewState: Bundle?) {
         var webView by remember {
             mutableStateOf<WebView?>(null)
         }
 
+        var canGoBack by remember {
+            mutableStateOf(false)
+        }
+
         // WebView 방문 기록이 있으면 이전 웹 페이지로 이동
-        BackHandler(
-            enabled = webView?.canGoBack() == true
-        ) {
+        BackHandler(enabled = canGoBack) {
             webView?.goBack()
         }
 
-        // Compose 화면에 Android WebView를 생성
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
@@ -63,18 +83,66 @@ class MainActivity : ComponentActivity() {
                     // HTTPS 페이지에서 HTTP 리소스 로드를 차단
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
-                    // anonymous_session 등 WebView 쿠키 저장을 허용
-                    CookieManager.getInstance().setAcceptCookie(true)
+                    val trustedHost = Uri.parse(WEB_URL).host
 
-                    // 페이지 이동을 외부 브라우저가 아닌 WebView 내부에서 처리
-                    webViewClient = WebViewClient()
+                    webViewClient = object : WebViewClient() {
 
-                    // Vercel에 배포된 React 서비스를 로드
-                    loadUrl(WEB_URL)
+                        // 페이지 이동 후 뒤로가기 가능 여부를 Compose 상태에 반영
+                        override fun doUpdateVisitedHistory(
+                            view: WebView?,
+                            url: String?,
+                            isReload: Boolean
+                        ) {
+                            super.doUpdateVisitedHistory(view, url, isReload)
+                            canGoBack = view?.canGoBack() == true
+                        }
 
-                    // 생성한 WebView를 뒤로가기 처리에 사용
-                    webView = this
+                        // 신뢰하는 React 배포 주소만 WebView 내부에서 처리
+                        override fun shouldOverrideUrlLoading(
+                            view: WebView,
+                            request: WebResourceRequest
+                        ): Boolean {
+                            val uri = request.url
+                            val host = uri.host ?: return true
+
+                            if (uri.scheme == "https" && host == trustedHost) {
+                                return false
+                            }
+
+                            if (uri.scheme == "http" || uri.scheme == "https") {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, uri)
+                                )
+                            }
+
+                            return true
+                        }
+                    }
+
+                    // 저장된 WebView 상태가 있으면 복원하고 없으면 최초 페이지를 로드
+                    val restored = savedWebViewState?.let {
+                        restoreState(it)
+                    } != null
+
+                    if (!restored) {
+                        loadUrl(WEB_URL)
+                    }
                 }
+            },
+            update = { view ->
+                webView = view
+                currentWebView = view
+                canGoBack = view.canGoBack()
+            },
+            onRelease = { view ->
+                // WebView가 보유한 렌더링 리소스와 Activity 참조를 정리
+                if (currentWebView === view) {
+                    currentWebView = null
+                }
+
+                view.stopLoading()
+                view.removeAllViews()
+                view.destroy()
             }
         )
     }
