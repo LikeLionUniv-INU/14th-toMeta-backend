@@ -1,6 +1,7 @@
 package com.likelion.tometa.domain.report.controller;
 
 import com.likelion.tometa.domain.report.dto.request.DailyReportNoteUpdateRequestDto;
+import com.likelion.tometa.domain.report.dto.request.WeeklyReportNoteUpdateRequestDto;
 import com.likelion.tometa.domain.report.dto.response.DailyReportGenerationResponseDto;
 import com.likelion.tometa.domain.report.dto.response.DailyReportResponseDto;
 import com.likelion.tometa.domain.report.dto.response.MonthlyReportListResponseDto;
@@ -107,6 +108,19 @@ public class ReportController {
         return ResponseEntity.ok(ApiResponse.success(
                 weeklyReportService.getWeeklyReport(reportId, sessionToken)
         ));
+    }
+
+    @PatchMapping("/weekly/{reportId}/note")
+    public ResponseEntity<ApiResponse<Void>> updateWeeklyReportNote(
+            @PathVariable Long reportId,
+            @Valid @RequestBody WeeklyReportNoteUpdateRequestDto request,
+            @CookieValue(
+                    name = AnonymousSessionCookieProvider.COOKIE_NAME,
+                    required = false
+            ) String sessionToken
+    ) {
+        weeklyReportService.updateNote(reportId, request, sessionToken);
+        return ResponseEntity.ok(ApiResponse.success());
     }
 
     @PostMapping("/weekly/{startDate}/generate")
