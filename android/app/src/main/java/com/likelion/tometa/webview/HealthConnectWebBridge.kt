@@ -7,6 +7,8 @@ import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.likelion.tometa.healthconnect.HealthConnectManager
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 class HealthConnectWebBridge(
     private val trustedOrigin: String,
@@ -35,6 +37,31 @@ class HealthConnectWebBridge(
         const val RESULT_SYNC_FAILED = "sync_failed"
         const val RESULT_SYNC_BUSY = "sync_busy"
         const val RESULT_SYNC_PERMISSION_MISSING = "sync_permission_missing"
+
+        const val RESPONSE_TYPE_CONNECTION = "healthConnectConnection"
+        const val RESPONSE_TYPE_SYNC = "healthConnectSync"
+
+        fun connectionResponse(
+            status: String,
+            connectionRegistered: Boolean = false
+        ): String {
+            return buildJsonObject {
+                put("type", RESPONSE_TYPE_CONNECTION)
+                put("status", status)
+                put("connectionRegistered", connectionRegistered)
+            }.toString()
+        }
+
+        fun syncResponse(
+            status: String,
+            synced: Boolean = false
+        ): String {
+            return buildJsonObject {
+                put("type", RESPONSE_TYPE_SYNC)
+                put("status", status)
+                put("synced", synced)
+            }.toString()
+        }
     }
 
     fun attach(webView: WebView): Boolean {
@@ -59,7 +86,11 @@ class HealthConnectWebBridge(
             when (message.data) {
                 REQUEST_PERMISSIONS -> {
                     if (!healthConnectManager.isAvailable()) {
-                        replyProxy.postMessage(RESULT_UNAVAILABLE)
+                        replyProxy.postMessage(
+                            connectionResponse(
+                                status = RESULT_UNAVAILABLE
+                            )
+                        )
                     } else {
                         onRequestPermissions(replyProxy)
                     }
@@ -67,15 +98,23 @@ class HealthConnectWebBridge(
 
                 REQUEST_SYNC -> {
                     if (!healthConnectManager.isAvailable()) {
-                        replyProxy.postMessage(RESULT_UNAVAILABLE)
+                        replyProxy.postMessage(
+                            syncResponse(
+                                status = RESULT_UNAVAILABLE
+                            )
+                        )
                     } else {
                         onRequestSync(replyProxy)
                     }
                 }
 
-                REQUEST_PUSH_PERMISSION -> onRequestPushPermission(replyProxy)
+                REQUEST_PUSH_PERMISSION -> {
+                    onRequestPushPermission(replyProxy)
+                }
 
-                else -> replyProxy.postMessage(RESULT_UNSUPPORTED)
+                else -> {
+                    replyProxy.postMessage(RESULT_UNSUPPORTED)
+                }
             }
         }
 
@@ -85,8 +124,14 @@ class HealthConnectWebBridge(
     private fun isTrustedOrigin(sourceOrigin: Uri): Boolean {
         val trustedUri = Uri.parse(trustedOrigin)
 
-        return sourceOrigin.scheme.equals(trustedUri.scheme, ignoreCase = true) &&
-                sourceOrigin.host.equals(trustedUri.host, ignoreCase = true) &&
+        return sourceOrigin.scheme.equals(
+            trustedUri.scheme,
+            ignoreCase = true
+        ) &&
+                sourceOrigin.host.equals(
+                    trustedUri.host,
+                    ignoreCase = true
+                ) &&
                 sourceOrigin.port == trustedUri.port
     }
 }
