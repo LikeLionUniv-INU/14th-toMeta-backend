@@ -16,6 +16,10 @@ import java.util.Set;
 public final class CosmeticSetTagSelector {
 
     private static final int MAX_SET_TAG_COUNT = 3;
+    private static final Set<CosmeticTagType> FALLBACK_TAG_TYPES = Set.of(
+            CosmeticTagType.BENEFIT,
+            CosmeticTagType.INGREDIENT
+    );
 
     private CosmeticSetTagSelector() {
     }
@@ -111,6 +115,7 @@ public final class CosmeticSetTagSelector {
         CosmeticSetItem item = component.item();
         long itemId = nullableId(item.getUserCosmetic().getId());
         List<TagCandidate> shuffledTags = component.tags().stream()
+                .filter(candidate -> FALLBACK_TAG_TYPES.contains(candidate.key().type()))
                 .sorted(Comparator
                         .comparingLong((TagCandidate candidate) -> stableScore(
                                 setSeed,
