@@ -129,10 +129,16 @@ public class DailyHealthSummary {
     }
 
     public void updateReportMetrics(
+            Integer sleepMinutes,
+            BigDecimal skinTemperatureCelsius,
+            Integer exerciseMinutes,
             Integer totalCaloriesBurned,
             Integer menstrualCycleDay,
             BigDecimal avgSpo2
     ) {
+        this.sleepMinutes = sleepMinutes;
+        this.skinTemperatureCelsius = skinTemperatureCelsius;
+        this.exerciseMinutes = exerciseMinutes;
         this.totalCaloriesBurned = totalCaloriesBurned;
         this.menstrualCycleDay = menstrualCycleDay;
         this.avgSpo2 = avgSpo2;

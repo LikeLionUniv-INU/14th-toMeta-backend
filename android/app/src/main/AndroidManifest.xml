@@ -5,9 +5,15 @@
 
     <!-- Health Connect 읽기 권한 -->
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
-    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
     <uses-permission android:name="android.permission.health.READ_EXERCISE" />
-    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />
+    <uses-permission android:name="android.permission.health.READ_MENSTRUATION" />
+    <uses-permission android:name="android.permission.health.READ_SKIN_TEMPERATURE" />
+
+    <!-- Health Connect 과거 데이터 읽기 권한 -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
+
     <!-- Health Connect 백그라운드 읽기 권한 -->
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
 
@@ -39,7 +45,6 @@
 
         </activity>
 
-        <!-- Android 13 이하 권한 사용 근거 화면 -->
         <activity
             android:name=".PermissionsRationaleActivity"
             android:exported="true">
@@ -50,7 +55,6 @@
 
         </activity>
 
-        <!-- Android 14 이상 권한 사용 근거 화면 -->
         <activity-alias
             android:name="ViewPermissionUsageActivity"
             android:exported="true"
@@ -64,7 +68,6 @@
 
         </activity-alias>
 
-        <!-- Firebase Installation ID 기반 FCM 등록 -->
         <meta-data
             android:name="firebase_messaging_installation_id_enabled"
             android:value="true" />

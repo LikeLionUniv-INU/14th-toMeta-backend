@@ -1,7 +1,7 @@
 package com.likelion.tometa.domain.health.service;
 
 import com.likelion.tometa.domain.health.code.HealthErrorCode;
-import com.likelion.tometa.domain.health.dto.request.DailyStepsRequestDto;
+import com.likelion.tometa.domain.health.dto.request.DailyHealthSummaryRequestDto;
 import com.likelion.tometa.domain.health.dto.request.HealthConnectionRequestDto;
 import com.likelion.tometa.domain.health.dto.request.HealthRawRecordRequestDto;
 import com.likelion.tometa.domain.health.dto.request.HealthSyncRequestDto;
@@ -123,14 +123,17 @@ public class HealthConnectService {
             healthRawRecordRepository.save(healthRawRecord);
         }
 
-        for (DailyStepsRequestDto dailySteps : request.dailySteps()) {
-            saveDailySteps(user, dailySteps);
+        for (DailyHealthSummaryRequestDto healthSummary : request.dailyHealthSummaries()) {
+            saveDailyHealthSummary(user, healthSummary);
         }
 
         connection.markSynced();
     }
 
-    private void saveDailySteps(User user, DailyStepsRequestDto request) {
+    private void saveDailyHealthSummary(
+            User user,
+            DailyHealthSummaryRequestDto request
+    ) {
         DailyHealthSummary summary = dailyHealthSummaryRepository
                 .findByUser_IdAndSummaryDate(user.getId(), request.date())
                 .orElseGet(() -> dailyHealthSummaryRepository.save(
@@ -140,7 +143,14 @@ public class HealthConnectService {
                                 .build()
                 ));
 
-        summary.updateSteps(Math.toIntExact(request.totalSteps()));
+        summary.updateReportMetrics(
+                request.sleepMinutes(),
+                request.skinTemperatureCelsius(),
+                request.exerciseMinutes(),
+                request.totalCaloriesBurned(),
+                request.menstrualCycleDay(),
+                request.avgSpo2()
+        );
     }
 
     private LocalDateTime toUtcLocalDateTime(Instant instant) {

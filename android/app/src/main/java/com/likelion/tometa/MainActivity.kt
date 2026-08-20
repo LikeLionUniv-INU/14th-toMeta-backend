@@ -328,6 +328,40 @@ class MainActivity : ComponentActivity() {
             connectHealthDevice(replyProxy)
         }
 
+        /*
+         * History 권한은 생리주기 계산을 위해 과거 데이터를 조회하는 데 사용한다.
+         * 사용자가 거부해도 Health Connect 연결 자체는 계속 진행한다.
+         */
+        val historyPermissionLauncher = rememberLauncherForActivityResult(
+            contract = PermissionController.createRequestPermissionResultContract()
+        ) {
+            val replyProxy = pendingPermissionReplyProxy
+                ?: return@rememberLauncherForActivityResult
+
+            lifecycleScope.launch {
+                val shouldRequestBackgroundPermission = try {
+                    healthConnectManager.isBackgroundReadAvailable() &&
+                            !healthConnectManager.hasBackgroundReadPermission()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    false
+                }
+
+                if (pendingPermissionReplyProxy !== replyProxy) {
+                    return@launch
+                }
+
+                if (shouldRequestBackgroundPermission) {
+                    backgroundPermissionLauncher.launch(
+                        HealthConnectPermissions.BACKGROUND_READ_PERMISSIONS
+                    )
+                } else {
+                    connectHealthDevice(replyProxy)
+                }
+            }
+        }
+
         val foregroundPermissionLauncher = rememberLauncherForActivityResult(
             contract = PermissionController.createRequestPermissionResultContract()
         ) { grantedPermissions ->
@@ -348,6 +382,26 @@ class MainActivity : ComponentActivity() {
             }
 
             lifecycleScope.launch {
+                val shouldRequestHistoryPermission = try {
+                    healthConnectManager.isHistoryReadAvailable() &&
+                            !healthConnectManager.hasHistoryReadPermission()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    false
+                }
+
+                if (pendingPermissionReplyProxy !== replyProxy) {
+                    return@launch
+                }
+
+                if (shouldRequestHistoryPermission) {
+                    historyPermissionLauncher.launch(
+                        HealthConnectPermissions.HISTORY_READ_PERMISSIONS
+                    )
+                    return@launch
+                }
+
                 val shouldRequestBackgroundPermission = try {
                     healthConnectManager.isBackgroundReadAvailable() &&
                             !healthConnectManager.hasBackgroundReadPermission()
