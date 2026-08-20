@@ -107,19 +107,17 @@ class CosmeticSetTagSelectorTest {
 
     @Test
     void select_fallbackUsesOnlyBenefitAndIngredientTagsInsteadOfProductTypes() {
-        CosmeticProduct first = product(101L, "toner");
-        CosmeticProduct second = product(102L, "serum");
-        CosmeticProduct third = product(103L, "cream");
+        CosmeticProduct productTypeOnly = product(101L, "product-type-only");
+        CosmeticProduct allowedTags = product(102L, "allowed-tags-source");
         CosmeticSet cosmeticSet = cosmeticSet(21L);
         List<CosmeticSetItem> items = List.of(
-                setItem(31L, cosmeticSet, userCosmetic(11L, first), 1),
-                setItem(32L, cosmeticSet, userCosmetic(12L, second), 2),
-                setItem(33L, cosmeticSet, userCosmetic(13L, third), 3)
+                setItem(31L, cosmeticSet, userCosmetic(11L, productTypeOnly), 1),
+                setItem(32L, cosmeticSet, userCosmetic(12L, allowedTags), 2)
         );
         Map<Long, List<CosmeticTag>> tagsByProductId = tagsByProductId(List.of(
-                tag(first, CosmeticTagType.INGREDIENT, "ingredient-a", 1),
-                tag(second, CosmeticTagType.BENEFIT, "benefit-b", 1),
-                tag(third, CosmeticTagType.INGREDIENT, "ingredient-c", 1)
+                tag(allowedTags, CosmeticTagType.INGREDIENT, "ingredient-a", 1),
+                tag(allowedTags, CosmeticTagType.BENEFIT, "benefit-b", 1),
+                tag(allowedTags, CosmeticTagType.INGREDIENT, "ingredient-c", 2)
         ));
 
         List<String> result = CosmeticSetTagSelector.select(
@@ -133,24 +131,24 @@ class CosmeticSetTagSelectorTest {
                 Set.copyOf(result)
         );
         assertFalse(result.stream().anyMatch(
-                tag -> Set.of("toner", "serum", "cream").contains(tag)
+                tag -> Set.of("product-type-only", "allowed-tags-source").contains(tag)
         ));
     }
 
     @Test
     void select_keepsCommonTagsFirstAndUsesAllowedTypesForMissingTags() {
-        CosmeticProduct first = product(101L, "toner");
-        CosmeticProduct second = product(102L, "serum");
+        CosmeticProduct productTypeOnly = product(101L, "product-type-only");
+        CosmeticProduct allowedTags = product(102L, "allowed-tags-source");
         CosmeticSet cosmeticSet = cosmeticSet(21L);
         List<CosmeticSetItem> items = List.of(
-                setItem(31L, cosmeticSet, userCosmetic(11L, first), 1),
-                setItem(32L, cosmeticSet, userCosmetic(12L, second), 2)
+                setItem(31L, cosmeticSet, userCosmetic(11L, productTypeOnly), 1),
+                setItem(32L, cosmeticSet, userCosmetic(12L, allowedTags), 2)
         );
         Map<Long, List<CosmeticTag>> tagsByProductId = tagsByProductId(List.of(
-                tag(first, CosmeticTagType.BENEFIT, "common", 1),
-                tag(first, CosmeticTagType.INGREDIENT, "ingredient-a", 2),
-                tag(second, CosmeticTagType.BENEFIT, "common", 1),
-                tag(second, CosmeticTagType.INGREDIENT, "ingredient-b", 2)
+                tag(productTypeOnly, CosmeticTagType.BENEFIT, "common", 1),
+                tag(allowedTags, CosmeticTagType.BENEFIT, "common", 1),
+                tag(allowedTags, CosmeticTagType.INGREDIENT, "ingredient-a", 1),
+                tag(allowedTags, CosmeticTagType.INGREDIENT, "ingredient-b", 2)
         ));
 
         List<String> result = CosmeticSetTagSelector.select(
@@ -163,7 +161,36 @@ class CosmeticSetTagSelectorTest {
         assertEquals(3, result.size());
         assertTrue(Set.of("ingredient-a", "ingredient-b")
                 .containsAll(result.subList(1, result.size())));
-        assertFalse(result.stream().anyMatch(tag -> Set.of("toner", "serum").contains(tag)));
+        assertFalse(result.stream().anyMatch(
+                tag -> Set.of("product-type-only", "allowed-tags-source").contains(tag)
+        ));
+    }
+
+    @Test
+    void select_prioritizesCommonProductTypeBeforeFallbackTags() {
+        CosmeticProduct first = product(101L, "shared-product-type");
+        CosmeticProduct second = product(102L, "shared-product-type");
+        CosmeticSet cosmeticSet = cosmeticSet(21L);
+        List<CosmeticSetItem> items = List.of(
+                setItem(31L, cosmeticSet, userCosmetic(11L, first), 1),
+                setItem(32L, cosmeticSet, userCosmetic(12L, second), 2)
+        );
+        Map<Long, List<CosmeticTag>> tagsByProductId = tagsByProductId(List.of(
+                tag(first, CosmeticTagType.INGREDIENT, "ingredient-a", 1),
+                tag(second, CosmeticTagType.BENEFIT, "benefit-b", 1)
+        ));
+
+        List<String> result = CosmeticSetTagSelector.select(
+                cosmeticSet,
+                items,
+                tagsByProductId
+        );
+
+        assertEquals("shared-product-type", result.getFirst());
+        assertEquals(
+                Set.of("shared-product-type", "ingredient-a", "benefit-b"),
+                Set.copyOf(result)
+        );
     }
 
     private Map<Long, List<CosmeticTag>> tagsByProductId(List<CosmeticTag> tags) {
@@ -178,7 +205,7 @@ class CosmeticSetTagSelectorTest {
     }
 
     private CosmeticProduct product(Long id) {
-        return product(id, "serum");
+        return product(id, "product-type-" + id);
     }
 
     private CosmeticProduct product(Long id, String productType) {
