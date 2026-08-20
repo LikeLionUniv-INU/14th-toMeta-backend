@@ -35,6 +35,8 @@ import com.likelion.tometa.healthconnect.network.HealthConnectApiClient
 import com.likelion.tometa.healthconnect.network.HealthConnectRepository
 import com.likelion.tometa.healthconnect.token.HealthDeviceTokenStore
 import com.likelion.tometa.webview.HealthConnectWebBridge
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -49,6 +51,7 @@ class MainActivity : ComponentActivity() {
 
     private var currentWebView: WebView? = null
     private var pendingPermissionReplyProxy: JavaScriptReplyProxy? = null
+    private var healthConnectJob: Job? = null
     private lateinit var healthConnectManager: HealthConnectManager
     private lateinit var healthConnectRepository: HealthConnectRepository
 
@@ -176,19 +179,25 @@ class MainActivity : ComponentActivity() {
             CookieManager.getInstance()
                 .getCookie(WEB_URL)
 
-        val hasAnonymousSession =
+        val anonymousSessionValue =
             cookieHeader
                 ?.split(";")
-                ?.any { cookie ->
+                ?.map { cookie ->
                     cookie.trim()
-                        .startsWith(
-                            "$ANONYMOUS_SESSION_COOKIE_NAME="
-                        )
-                } == true
+                }
+                ?.firstOrNull { cookie ->
+                    cookie.substringBefore("=") ==
+                            ANONYMOUS_SESSION_COOKIE_NAME
+                }
+                ?.substringAfter(
+                    "=",
+                    missingDelimiterValue = ""
+                )
+                ?.trim()
 
         if (
             cookieHeader.isNullOrBlank() ||
-            !hasAnonymousSession
+            anonymousSessionValue.isNullOrBlank()
         ) {
             runCatching {
                 replyProxy.postMessage(
@@ -207,35 +216,61 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        lifecycleScope.launch {
-            val result =
+        val job =
+            lifecycleScope.launch {
+                val connectionSucceeded =
+                    try {
+                        healthConnectRepository.connect(
+                            cookieHeader
+                        )
+
+                        true
+                    } catch (e: CancellationException) {
+                        // Coroutine 취소를 일반 연결 실패로 처리하지 않음
+                        throw e
+                    } catch (_: Exception) {
+                        false
+                    }
+
+                // WebView가 이미 종료되거나 새로운 요청으로 교체된 경우
+                // 기존 ReplyProxy에는 응답하지 않음
+                if (
+                    pendingPermissionReplyProxy !==
+                    replyProxy
+                ) {
+                    return@launch
+                }
+
                 runCatching {
-                    healthConnectRepository.connect(
-                        cookieHeader
+                    replyProxy.postMessage(
+                        if (connectionSucceeded) {
+                            HealthConnectWebBridge.RESULT_GRANTED
+                        } else {
+                            HealthConnectWebBridge.RESULT_CONNECTION_FAILED
+                        }
                     )
                 }
 
-            // WebView가 이미 종료되거나 새로운 요청으로 교체된 경우
-            // 기존 ReplyProxy에는 응답하지 않음
+                if (
+                    pendingPermissionReplyProxy ===
+                    replyProxy
+                ) {
+                    pendingPermissionReplyProxy =
+                        null
+                }
+            }
+
+        healthConnectJob =
+            job
+
+        job.invokeOnCompletion {
             if (
-                pendingPermissionReplyProxy !==
-                replyProxy
+                healthConnectJob ===
+                job
             ) {
-                return@launch
+                healthConnectJob =
+                    null
             }
-
-            runCatching {
-                replyProxy.postMessage(
-                    if (result.isSuccess) {
-                        HealthConnectWebBridge.RESULT_GRANTED
-                    } else {
-                        HealthConnectWebBridge.RESULT_CONNECTION_FAILED
-                    }
-                )
-            }
-
-            pendingPermissionReplyProxy =
-                null
         }
     }
 
@@ -318,6 +353,7 @@ class MainActivity : ComponentActivity() {
                     // 원격 웹 콘텐츠만 사용하므로 로컬 파일 접근 차단
                     settings.allowFileAccess =
                         false
+
                     settings.allowContentAccess =
                         false
 
@@ -487,7 +523,7 @@ class MainActivity : ComponentActivity() {
                         null
                 }
 
-                // 권한 요청 또는 서버 연결 중 WebView 종료 시 대기 요청 종료
+                // React에 먼저 요청 종료 상태 전달
                 pendingPermissionReplyProxy?.let { replyProxy ->
                     runCatching {
                         replyProxy.postMessage(
@@ -497,6 +533,11 @@ class MainActivity : ComponentActivity() {
                 }
 
                 pendingPermissionReplyProxy =
+                    null
+
+                // WebView 수명 종료 시 진행 중인 서버 연결 작업도 취소
+                healthConnectJob?.cancel()
+                healthConnectJob =
                     null
 
                 view.stopLoading()
