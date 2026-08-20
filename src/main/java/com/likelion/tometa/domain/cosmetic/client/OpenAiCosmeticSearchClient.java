@@ -41,6 +41,12 @@ public class OpenAiCosmeticSearchClient {
             실제 웹에서 확인할 수 있는 정식 제품명을 반환한다.
             존재하지 않는 제품을 추측해서 만들지 않는다.
 
+            brandName:
+            실제 웹에서 확인할 수 있는 해당 제품의 브랜드명을 반환한다.
+            공식 브랜드명을 우선한다.
+            브랜드명을 명확하게 확인할 수 없으면 빈 문자열을 반환한다.
+            존재하지 않는 브랜드명을 추측해서 만들지 않는다.
+
             productType:
             반드시 다음 값 중 하나만 사용한다.
             스킨/토너, 토너패드, 미스트, 앰플, 세럼, 에센스,
@@ -80,11 +86,7 @@ public class OpenAiCosmeticSearchClient {
 
             validateResponse(response);
 
-            log.debug(
-                    "OpenAI 화장품 검색 응답. status={}, usage={}",
-                    response.path("status").asText(),
-                    response.path("usage")
-            );
+            log.debug("OpenAI 화장품 검색 응답. status={}, usage={}", response.path("status").asText(), response.path("usage"));
 
             String outputText = extractOutputText(response);
             SearchPayload payload = jsonMapper.readValue(outputText, SearchPayload.class);
@@ -102,10 +104,7 @@ public class OpenAiCosmeticSearchClient {
 
         body.put("model", properties.model());
         body.put("reasoning", Map.of("effort", "low"));
-        body.put("tools", List.of(Map.of(
-                "type", "web_search",
-                "search_context_size", "low"
-        )));
+        body.put("tools", List.of(Map.of("type", "web_search", "search_context_size", "low")));
         body.put("tool_choice", "required");
         body.put("instructions", INSTRUCTIONS);
         body.put("input", "검색할 화장품: " + keyword);
@@ -120,10 +119,8 @@ public class OpenAiCosmeticSearchClient {
         Map<String, Object> itemProperties = new LinkedHashMap<>();
 
         itemProperties.put("productName", Map.of("type", "string"));
-        itemProperties.put("productType", Map.of(
-                "type", "string",
-                "enum", PRODUCT_TYPES
-        ));
+        itemProperties.put("brandName", Map.of("type", "string"));
+        itemProperties.put("productType", Map.of("type", "string", "enum", PRODUCT_TYPES));
         itemProperties.put("imageUrl", Map.of("type", "string"));
         itemProperties.put("benefit", Map.of("type", "string"));
         itemProperties.put("mainIngredients", Map.of(
@@ -136,13 +133,7 @@ public class OpenAiCosmeticSearchClient {
         Map<String, Object> itemSchema = new LinkedHashMap<>();
         itemSchema.put("type", "object");
         itemSchema.put("properties", itemProperties);
-        itemSchema.put("required", List.of(
-                "productName",
-                "productType",
-                "imageUrl",
-                "benefit",
-                "mainIngredients"
-        ));
+        itemSchema.put("required", List.of("productName", "brandName", "productType", "imageUrl", "benefit", "mainIngredients"));
         itemSchema.put("additionalProperties", false);
 
         Map<String, Object> itemsSchema = new LinkedHashMap<>();
@@ -156,12 +147,7 @@ public class OpenAiCosmeticSearchClient {
         schema.put("required", List.of("items"));
         schema.put("additionalProperties", false);
 
-        return Map.of(
-                "type", "json_schema",
-                "name", "cosmetic_search_results",
-                "strict", true,
-                "schema", schema
-        );
+        return Map.of("type", "json_schema", "name", "cosmetic_search_results", "strict", true, "schema", schema);
     }
 
     private void validateResponse(JsonNode response) {
@@ -173,16 +159,8 @@ public class OpenAiCosmeticSearchClient {
         String status = response.path("status").asText();
 
         if ("incomplete".equals(status)) {
-            String reason = response
-                    .path("incomplete_details")
-                    .path("reason")
-                    .asText("unknown");
-
-            log.warn(
-                    "OpenAI 화장품 검색 응답이 완료되지 않았습니다. reason={}, usage={}",
-                    reason,
-                    response.path("usage")
-            );
+            String reason = response.path("incomplete_details").path("reason").asText("unknown");
+            log.warn("OpenAI 화장품 검색 응답이 완료되지 않았습니다. reason={}, usage={}", reason, response.path("usage"));
             throw new GeneralException(CosmeticErrorCode.COSMETIC_SEARCH_FAILED);
         }
 
@@ -248,10 +226,7 @@ public class OpenAiCosmeticSearchClient {
                 continue;
             }
 
-            uniqueItems.putIfAbsent(
-                    normalized.productName().toLowerCase(Locale.ROOT),
-                    normalized
-            );
+            uniqueItems.putIfAbsent(normalized.productName().toLowerCase(Locale.ROOT), normalized);
 
             if (uniqueItems.size() >= MAX_RESULT_COUNT) {
                 break;
@@ -279,6 +254,7 @@ public class OpenAiCosmeticSearchClient {
 
         return new CosmeticSearchCandidate(
                 item.productName().trim(),
+                normalizeBrandName(item.brandName()),
                 item.productType(),
                 normalizeImageUrl(item.imageUrl()),
                 item.benefit().trim(),
@@ -299,25 +275,25 @@ public class OpenAiCosmeticSearchClient {
                 .toList();
     }
 
+    private String normalizeBrandName(String brandName) {
+        return brandName == null || brandName.isBlank() ? null : brandName.trim();
+    }
+
     private String normalizeImageUrl(String imageUrl) {
         if (imageUrl == null || imageUrl.isBlank()) {
             return null;
         }
 
         String normalized = imageUrl.trim();
-
-        return normalized.startsWith("https://") || normalized.startsWith("http://")
-                ? normalized
-                : null;
+        return normalized.startsWith("https://") || normalized.startsWith("http://") ? normalized : null;
     }
 
-    private record SearchPayload(
-            List<SearchItem> items
-    ) {
+    private record SearchPayload(List<SearchItem> items) {
     }
 
     private record SearchItem(
             String productName,
+            String brandName,
             String productType,
             String imageUrl,
             String benefit,
