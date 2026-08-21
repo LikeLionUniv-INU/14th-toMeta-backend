@@ -30,7 +30,7 @@
 ![Firebase](https://img.shields.io/badge/Firebase-FCM-DD2C00?style=for-the-badge&logo=firebase&logoColor=white)
 ![Health Connect](https://img.shields.io/badge/Android-Health%20Connect-3DDC84?style=for-the-badge&logo=android&logoColor=white)
 
-</div>
+<br/>
 
 [![Frontend](https://img.shields.io/badge/Frontend-Repository-181717?style=flat-square&logo=github)](https://github.com/LikeLionUniv-INU/14th-toMeta-frontend)
 [![Backend](https://img.shields.io/badge/Backend-Repository-181717?style=flat-square&logo=github)](https://github.com/LikeLionUniv-INU/14th-toMeta-backend)
@@ -46,7 +46,7 @@
 
 </div>
 
-<br/>
+</div>
 
 > **낫트데이 Backend**는 사용자의 피부 상태, 사용 화장품, 피부 기록과 Health Connect 생활 데이터를  
 > 날짜 단위로 연결하고, 축적된 데이터를 기반으로 Daily · Weekly AI Report를 생성하는 Wellness Backend System입니다.
