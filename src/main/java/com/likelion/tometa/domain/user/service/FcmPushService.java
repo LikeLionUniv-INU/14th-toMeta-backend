@@ -30,10 +30,22 @@ public class FcmPushService {
             String body,
             Map<String, String> data
     ) {
+        return sendToUser(userId, title, body, data, () -> {
+        });
+    }
+
+    int sendToUser(
+            Long userId,
+            String title,
+            String body,
+            Map<String, String> data,
+            Runnable deliveryStarting
+    ) {
         FirebaseMessaging firebaseMessaging =
                 firebaseMessagingProvider.getIfAvailable();
 
         if (firebaseMessaging == null) {
+            deliveryStarting.run();
             log.warn(
                     "Firebase가 비활성화되어 푸시를 발송하지 않습니다. userId={}",
                     userId
@@ -45,32 +57,27 @@ public class FcmPushService {
                 pushTokenRepository.findAllByUser_Id(userId);
 
         if (pushTokens.isEmpty()) {
+            deliveryStarting.run();
             return 0;
         }
+
+        List<PreparedPush> preparedPushes = pushTokens.stream()
+                .map(pushToken -> new PreparedPush(
+                        pushToken,
+                        buildMessage(pushToken, title, body, data)
+                ))
+                .toList();
+        deliveryStarting.run();
 
         int successCount = 0;
         List<InvalidPushToken> invalidPushTokens = new ArrayList<>();
 
-        for (PushToken pushToken : pushTokens) {
-            Message.Builder messageBuilder = Message.builder()
-                    .setFid(
-                            pushToken.getFirebaseInstallationId()
-                    )
-                    .setNotification(
-                            Notification.builder()
-                                    .setTitle(title)
-                                    .setBody(body)
-                                    .build()
-                    );
-
-            if (data != null && !data.isEmpty()) {
-                messageBuilder.putAllData(data);
-            }
-
+        for (PreparedPush preparedPush : preparedPushes) {
+            PushToken pushToken = preparedPush.pushToken();
             try {
                 String messageId =
                         firebaseMessaging.send(
-                                messageBuilder.build()
+                                preparedPush.message()
                         );
 
                 successCount++;
@@ -121,6 +128,30 @@ public class FcmPushService {
         }
 
         return successCount;
+    }
+
+    private Message buildMessage(
+            PushToken pushToken,
+            String title,
+            String body,
+            Map<String, String> data
+    ) {
+        Message.Builder messageBuilder = Message.builder()
+                .setFid(pushToken.getFirebaseInstallationId())
+                .setNotification(
+                        Notification.builder()
+                                .setTitle(title)
+                                .setBody(body)
+                                .build()
+                );
+
+        if (data != null && !data.isEmpty()) {
+            messageBuilder.putAllData(data);
+        }
+        return messageBuilder.build();
+    }
+
+    private record PreparedPush(PushToken pushToken, Message message) {
     }
 
     private record InvalidPushToken(

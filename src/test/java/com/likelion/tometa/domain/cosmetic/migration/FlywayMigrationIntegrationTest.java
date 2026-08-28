@@ -36,7 +36,10 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
-        assertEquals(12, successfulMigrationCount(jdbcUrl));
+        assertEquals(30, count(jdbcUrl, "skin_care_tips"));
+        assertEquals(30, countDistinctSkinCareTipContents(jdbcUrl));
+        assertEquals(30, activeSkinCareTipCount(jdbcUrl));
+        assertEquals(14, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -58,7 +61,9 @@ class FlywayMigrationIntegrationTest {
 
         assertEquals(100, count(jdbcUrl, "ingredients"));
         assertEquals(100, countDistinctIngredientNames(jdbcUrl));
-        assertEquals(12, successfulMigrationCount(jdbcUrl));
+        assertEquals(30, count(jdbcUrl, "skin_care_tips"));
+        assertEquals(30, countDistinctSkinCareTipContents(jdbcUrl));
+        assertEquals(14, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -97,7 +102,41 @@ class FlywayMigrationIntegrationTest {
                                 + "and created_at = timestamp '2025-01-02 03:04:05'"
                 )
         );
-        assertEquals(12, successfulMigrationCount(jdbcUrl));
+        assertEquals(30, count(jdbcUrl, "skin_care_tips"));
+        assertEquals(14, successfulMigrationCount(jdbcUrl));
+    }
+
+    @Test
+    void migrate_seedsOnlyMissingSkinCareTipsWhenManualTipExists() throws Exception {
+        String jdbcUrl = newJdbcUrl();
+        Flyway.configure()
+                .dataSource(jdbcUrl, USERNAME, PASSWORD)
+                .locations(H2_MIGRATION_LOCATION)
+                .target("12")
+                .load()
+                .migrate();
+        String existingTip = "세안할 때는 뜨거운 물보다 미지근한 물을 사용해 피부 자극을 줄여보세요.";
+        executeUpdate(jdbcUrl, """
+                insert into skin_care_tips (
+                    skin_care_tip_id, content, is_active, created_at, updated_at
+                ) values (
+                    1000, '%s', true,
+                    timestamp '2025-01-02 03:04:05', timestamp '2025-01-02 03:04:05'
+                )
+                """.formatted(existingTip));
+
+        flyway(jdbcUrl).migrate();
+
+        assertEquals(30, count(jdbcUrl, "skin_care_tips"));
+        assertEquals(30, countDistinctSkinCareTipContents(jdbcUrl));
+        assertEquals(1, queryForInt(
+                jdbcUrl,
+                "select count(*) from skin_care_tips "
+                        + "where skin_care_tip_id = 1000 "
+                        + "and content = '" + existingTip + "' "
+                        + "and created_at = timestamp '2025-01-02 03:04:05'"
+        ));
+        assertEquals(14, successfulMigrationCount(jdbcUrl));
     }
 
     @Test
@@ -298,6 +337,14 @@ class FlywayMigrationIntegrationTest {
 
     private int countDistinctIngredientNames(String jdbcUrl) throws SQLException {
         return queryForInt(jdbcUrl, "select count(distinct name) from ingredients");
+    }
+
+    private int countDistinctSkinCareTipContents(String jdbcUrl) throws SQLException {
+        return queryForInt(jdbcUrl, "select count(distinct content) from skin_care_tips");
+    }
+
+    private int activeSkinCareTipCount(String jdbcUrl) throws SQLException {
+        return queryForInt(jdbcUrl, "select count(*) from skin_care_tips where is_active = true");
     }
 
     private int successfulMigrationCount(String jdbcUrl) throws SQLException {

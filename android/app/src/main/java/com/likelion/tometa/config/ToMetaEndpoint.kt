@@ -1,6 +1,6 @@
 package com.likelion.tometa.config
 
 object ToMetaEndpoint {
-    const val WEB_URL = "https://14th-to-meta-frontend.vercel.app"
-    val API_BASE_URL = "$WEB_URL/"
+    const val WEB_URL = "https://tometa-final.vercel.app"
+    const val API_BASE_URL = "https://tometa-final.duckdns.org/"
 }

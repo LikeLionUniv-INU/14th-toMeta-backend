@@ -62,3 +62,7 @@ app:
       weekly-generation-cron: "0 0 0 * * MON"
       weekly-notification-cron: "0 * * * * MON"
       weekly-notification-recovery-cron: "0 * * * * *"
+
+  notification:
+    scheduler:
+      record-reminder-cron: "0 * * * * *"

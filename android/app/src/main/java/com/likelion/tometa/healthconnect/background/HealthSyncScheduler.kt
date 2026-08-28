@@ -18,7 +18,7 @@ object HealthSyncScheduler {
         "health_connect_sync"
 
     private const val SYNC_INTERVAL_HOURS =
-        6L
+        3L
 
     fun schedule(
         context: Context

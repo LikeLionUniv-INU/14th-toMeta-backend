@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -44,25 +45,35 @@ public class PushNotificationService {
             Long userId,
             LocalDate date
     ) {
-        return userNotificationSettingRepository
+        return sendRecordReminder(userId, date, () -> {
+        });
+    }
+
+    int sendRecordReminder(
+            Long userId,
+            LocalDate date,
+            Runnable deliveryStarting
+    ) {
+        Optional<UserNotificationSetting> setting = userNotificationSettingRepository
                 .findByUser_Id(userId)
-                .filter(
-                        UserNotificationSetting::isRecordReminderEnabled
-                )
-                .map(setting ->
-                        fcmPushService.sendToUser(
-                                userId,
-                                "오늘의 피부 기록을 남겨주세요",
-                                "오늘의 피부 상태와 생활 기록을 남겨보세요.",
-                                Map.of(
-                                        "type",
-                                        "RECORD_REMINDER",
-                                        "date",
-                                        date.toString()
-                                )
-                        )
-                )
-                .orElse(0);
+                .filter(UserNotificationSetting::isRecordReminderEnabled);
+        if (setting.isEmpty()) {
+            deliveryStarting.run();
+            return 0;
+        }
+
+        return fcmPushService.sendToUser(
+                userId,
+                "오늘의 피부 기록을 남겨주세요",
+                "오늘의 피부 상태와 생활 기록을 남겨보세요.",
+                Map.of(
+                        "type",
+                        "RECORD_REMINDER",
+                        "date",
+                        date.toString()
+                ),
+                deliveryStarting
+        );
     }
 
     public int sendWeeklyReportNotification(

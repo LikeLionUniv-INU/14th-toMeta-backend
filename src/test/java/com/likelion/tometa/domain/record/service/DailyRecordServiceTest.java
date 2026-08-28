@@ -23,6 +23,7 @@ import com.likelion.tometa.domain.record.entity.DailyRecordCosmeticSetItem;
 import com.likelion.tometa.domain.record.entity.DailyRecordImage;
 import com.likelion.tometa.domain.record.entity.DailyRecordSelection;
 import com.likelion.tometa.domain.record.enums.DailyRecordSelectionType;
+import com.likelion.tometa.domain.record.event.DailyRecordCreatedEvent;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticSetRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticSetItemRepository;
@@ -44,6 +45,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 
@@ -104,6 +106,8 @@ class DailyRecordServiceTest {
     private RecordImageReadUrlService imageReadUrlService;
     @Mock
     private ObjectMapper objectMapper;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private DailyRecordService dailyRecordService;
@@ -253,6 +257,11 @@ class DailyRecordServiceTest {
         assertEquals("collecting", reportCaptor.getValue().getReportStatus());
         assertEquals(37L, reportCaptor.getValue().getDailyRecord().getId());
         verify(imageAttachmentService).attach(any(DailyRecord.class), eq(user), eq(List.of()));
+        ArgumentCaptor<DailyRecordCreatedEvent> eventCaptor =
+                ArgumentCaptor.forClass(DailyRecordCreatedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertEquals(1L, eventCaptor.getValue().userId());
+        assertEquals(request.date(), eventCaptor.getValue().recordDate());
     }
 
     @Test
