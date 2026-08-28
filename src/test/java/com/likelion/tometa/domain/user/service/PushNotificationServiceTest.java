@@ -14,6 +14,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,6 +67,57 @@ class PushNotificationServiceTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyMap()
+        );
+    }
+
+    @Test
+    void recordReminder_startsDeliveryAfterSettingLookup() {
+        LocalDate date = LocalDate.of(2026, 8, 24);
+        Runnable deliveryStarting = mock(Runnable.class);
+        UserNotificationSetting setting = UserNotificationSetting.builder()
+                .recordReminderEnabled(true)
+                .build();
+        when(settingRepository.findByUser_Id(1L))
+                .thenReturn(Optional.of(setting));
+        when(fcmPushService.sendToUser(
+                org.mockito.ArgumentMatchers.eq(1L),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(Map.of(
+                        "type", "RECORD_REMINDER",
+                        "date", date.toString()
+                )),
+                org.mockito.ArgumentMatchers.eq(deliveryStarting)
+        )).thenReturn(1);
+
+        assertEquals(
+                1,
+                service.sendRecordReminder(1L, date, deliveryStarting)
+        );
+    }
+
+    @Test
+    void recordReminder_disabledSettingCompletesWithoutFcmDelivery() {
+        LocalDate date = LocalDate.of(2026, 8, 24);
+        Runnable deliveryStarting = mock(Runnable.class);
+        UserNotificationSetting setting = UserNotificationSetting.builder()
+                .recordReminderEnabled(false)
+                .build();
+        when(settingRepository.findByUser_Id(1L))
+                .thenReturn(Optional.of(setting));
+
+        assertEquals(
+                0,
+                service.sendRecordReminder(1L, date, deliveryStarting)
+        );
+
+        verify(deliveryStarting).run();
+        verify(fcmPushService, never()).sendToUser(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyMap(),
+                org.mockito.ArgumentMatchers.any(Runnable.class)
         );
     }
 }

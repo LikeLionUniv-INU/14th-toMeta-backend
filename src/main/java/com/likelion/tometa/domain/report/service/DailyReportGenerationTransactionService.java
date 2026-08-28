@@ -17,6 +17,7 @@ import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -45,7 +46,7 @@ public class DailyReportGenerationTransactionService {
     private final DailyReportRepository dailyReportRepository;
     private final JsonMapper jsonMapper;
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Preparation prepare(User user, LocalDate date) {
         DailyRecord dailyRecord = dailyRecordRepository
                 .findByUserAndRecordDateForUpdate(user, date)
@@ -105,7 +106,7 @@ public class DailyReportGenerationTransactionService {
         );
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public DailyReportGenerationResponseDto complete(
             Long reportId,
             long generationVersion,
@@ -135,7 +136,7 @@ public class DailyReportGenerationTransactionService {
         return toResponse(dailyReportRepository.findById(reportId).orElseThrow());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void reset(Long reportId, long generationVersion) {
         dailyReportRepository.resetGenerationIfCurrent(
                 reportId,

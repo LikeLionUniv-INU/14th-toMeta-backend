@@ -2,7 +2,7 @@
   "CORSRules": [
     {
       "AllowedOrigins": [
-        "https://14th-to-meta-frontend.vercel.app",
+        "https://tometa-final.vercel.app",
         "http://localhost:5173"
       ],
       "AllowedMethods": [

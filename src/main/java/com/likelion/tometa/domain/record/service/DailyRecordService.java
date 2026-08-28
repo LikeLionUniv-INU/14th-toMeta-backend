@@ -30,6 +30,7 @@ import com.likelion.tometa.domain.record.entity.DailyRecordSelection;
 import com.likelion.tometa.domain.record.enums.DailyRecordSelectionType;
 import com.likelion.tometa.domain.record.enums.RecordUsagePeriod;
 import com.likelion.tometa.domain.record.enums.SkinStatus;
+import com.likelion.tometa.domain.record.event.DailyRecordCreatedEvent;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticSetRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticSetItemRepository;
@@ -45,6 +46,7 @@ import com.likelion.tometa.global.exception.GeneralException;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -88,6 +90,7 @@ public class DailyRecordService {
     private final DailyRecordImageAttachmentService imageAttachmentService;
     private final RecordImageReadUrlService imageReadUrlService;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public DailyRecordCreateResponseDto create(
@@ -145,6 +148,10 @@ public class DailyRecordService {
         dailyReportRepository.save(DailyReport.builder()
                 .dailyRecord(dailyRecord)
                 .build());
+        eventPublisher.publishEvent(new DailyRecordCreatedEvent(
+                user.getId(),
+                dailyRecord.getRecordDate()
+        ));
 
         return new DailyRecordCreateResponseDto(dailyRecord.getId(), request.date());
     }

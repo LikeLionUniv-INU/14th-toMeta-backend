@@ -19,7 +19,7 @@ public class AnonymousSessionCookieProvider {
         return ResponseCookie.from(COOKIE_NAME, token)
                 .httpOnly(true)
                 .secure(properties.cookieSecure())
-                .sameSite("Lax")
+                .sameSite("None")
                 .path("/")
                 .maxAge(Duration.ofDays(properties.expirationDays()))
                 .build();

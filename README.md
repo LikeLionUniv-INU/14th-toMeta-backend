@@ -1173,7 +1173,8 @@ src/main/resources/db/migration/mysql
 │
 ├── V10__add_daily_record_update_support.sql
 ├── V11__add_weekly_report_notification_delivery.sql
-└── V12__add_weekly_report_notification_attempt_id.sql
+├── V12__add_weekly_report_notification_attempt_id.sql
+└── V13__seed_skin_care_tips.sql
 ```
 
 ### Schema Change Flow

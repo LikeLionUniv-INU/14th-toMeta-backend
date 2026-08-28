@@ -31,7 +31,15 @@ public interface DailyRecordRepository extends JpaRepository<DailyRecord, Long> 
             @Param("recordDate") LocalDate recordDate
     );
 
-    boolean existsByUserAndRecordDate(User user, LocalDate recordDate);
+    boolean existsByUserAndRecordDate(
+            User user,
+            LocalDate recordDate
+    );
+
+    boolean existsByUser_IdAndRecordDate(
+            Long userId,
+            LocalDate recordDate
+    );
 
     List<DailyRecord> findAllByUserAndRecordDateBetween(
             User user,

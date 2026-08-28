@@ -1,6 +1,6 @@
 package com.likelion.tometa.healthconnect.sync
 
-import com.likelion.tometa.healthconnect.sync.dto.DailyStepsSyncDto
+import com.likelion.tometa.healthconnect.sync.dto.DailyHealthSummarySyncDto
 import com.likelion.tometa.healthconnect.sync.dto.HealthRawRecordSyncDto
 import com.likelion.tometa.healthconnect.sync.dto.HealthSyncRequestDto
 import kotlinx.serialization.json.Json
@@ -21,18 +21,23 @@ class HealthSyncRequestDtoSerializationTest {
                 records = listOf(
                     HealthRawRecordSyncDto(
                         hcRecordId = "record-1",
-                        recordType = "HeartRateRecord",
+                        recordType = "SleepSessionRecord",
                         startTime = "2026-08-16T00:00:00Z",
-                        endTime = "2026-08-16T00:01:00Z",
+                        endTime = "2026-08-16T01:00:00Z",
                         payload = buildJsonObject {
                             put("sampleCount", 1)
                         }
                     )
                 ),
-                dailySteps = listOf(
-                    DailyStepsSyncDto(
+                dailyHealthSummaries = listOf(
+                    DailyHealthSummarySyncDto(
                         date = "2026-08-16",
-                        totalSteps = 8000
+                        sleepMinutes = 420,
+                        skinTemperatureCelsius = 36.5,
+                        exerciseMinutes = 30,
+                        totalCaloriesBurned = 2100,
+                        menstrualCycleDay = null,
+                        avgSpo2 = 97.5
                     )
                 )
             )
@@ -41,13 +46,19 @@ class HealthSyncRequestDtoSerializationTest {
             json.encodeToString(request)
 
         assertTrue(result.contains("\"records\""))
-        assertTrue(result.contains("\"dailySteps\""))
+        assertTrue(result.contains("\"dailyHealthSummaries\""))
+
         assertTrue(result.contains("\"hcRecordId\""))
         assertTrue(result.contains("\"recordType\""))
         assertTrue(result.contains("\"startTime\""))
         assertTrue(result.contains("\"endTime\""))
         assertTrue(result.contains("\"payload\""))
+
         assertTrue(result.contains("\"date\""))
-        assertTrue(result.contains("\"totalSteps\""))
+        assertTrue(result.contains("\"sleepMinutes\""))
+        assertTrue(result.contains("\"skinTemperatureCelsius\""))
+        assertTrue(result.contains("\"exerciseMinutes\""))
+        assertTrue(result.contains("\"totalCaloriesBurned\""))
+        assertTrue(result.contains("\"avgSpo2\""))
     }
 }
