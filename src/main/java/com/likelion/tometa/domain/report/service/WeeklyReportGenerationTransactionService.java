@@ -60,10 +60,7 @@ public class WeeklyReportGenerationTransactionService {
     ) {
         validateStartDate(startDate);
 
-        User user = userRepository.findWithLockById(requestedUser.getId())
-                .orElseThrow(() -> new GeneralException(
-                        GlobalErrorCode.INTERNAL_SERVER_ERROR
-                ));
+        User user = findUserForUpdate(requestedUser);
 
         LocalDate endDate = startDate.plusDays(6);
 
@@ -96,6 +93,55 @@ public class WeeklyReportGenerationTransactionService {
             weeklyReport.markCollecting();
         }
 
+        return prepareGeneration(
+                user,
+                startDate,
+                endDate,
+                weeklyReport,
+                false
+        );
+    }
+
+    @Transactional
+    public Preparation prepareForRegeneration(
+            User requestedUser,
+            LocalDate startDate
+    ) {
+        validateWeekStartDate(startDate);
+
+        User user = findUserForUpdate(requestedUser);
+
+        WeeklyReport weeklyReport = weeklyReportRepository
+                .findByUserAndWeekStartDateForUpdate(user, startDate)
+                .orElse(null);
+
+        if (weeklyReport == null
+                || !COMPLETED.equals(weeklyReport.getReportStatus())) {
+            return Preparation.skipped();
+        }
+
+        LocalDate endDate = startDate.plusDays(6);
+
+        if (!endDate.isBefore(LocalDate.now(KOREA_ZONE))) {
+            return Preparation.skipped();
+        }
+
+        return prepareGeneration(
+                user,
+                startDate,
+                endDate,
+                weeklyReport,
+                true
+        );
+    }
+
+    private Preparation prepareGeneration(
+            User user,
+            LocalDate startDate,
+            LocalDate endDate,
+            WeeklyReport weeklyReport,
+            boolean regeneration
+    ) {
         List<DailyRecord> dailyRecords = dailyRecordRepository
                 .findAllByUserAndRecordDateBetween(
                         user,
@@ -138,7 +184,8 @@ public class WeeklyReportGenerationTransactionService {
                         dailyRecords,
                         dailyReports,
                         healthSummaries
-                )
+                ),
+                regeneration
         );
     }
 
@@ -146,7 +193,8 @@ public class WeeklyReportGenerationTransactionService {
     public WeeklyReportGenerationResponseDto complete(
             Long reportId,
             LocalDateTime generationStartedAt,
-            WeeklyReportAiResult aiResult
+            WeeklyReportAiResult aiResult,
+            boolean regeneration
     ) {
         WeeklyReport weeklyReport = weeklyReportRepository
                 .findByIdForUpdate(reportId)
@@ -170,21 +218,24 @@ public class WeeklyReportGenerationTransactionService {
             );
         }
 
-        weeklyReport.complete(
-                aiResult.weeklySummary(),
-                aiResult.personalizedSolution()
-        );
+        if (regeneration) {
+            deleteExistingAnalyses(weeklyReport);
 
-        List<WeeklyReportAnalysis> analyses =
-                IntStream.range(0, aiResult.analyses().size())
-                        .mapToObj(index ->
-                                WeeklyReportAnalysis.builder()
-                                        .weeklyReport(weeklyReport)
-                                        .content(aiResult.analyses().get(index))
-                                        .sortOrder(index + 1)
-                                        .build()
-                        )
-                        .toList();
+            weeklyReport.regenerate(
+                    aiResult.weeklySummary(),
+                    aiResult.personalizedSolution()
+            );
+        } else {
+            weeklyReport.complete(
+                    aiResult.weeklySummary(),
+                    aiResult.personalizedSolution()
+            );
+        }
+
+        List<WeeklyReportAnalysis> analyses = createAnalyses(
+                weeklyReport,
+                aiResult.analyses()
+        );
 
         weeklyReportAnalysisRepository.saveAll(analyses);
 
@@ -207,6 +258,39 @@ public class WeeklyReportGenerationTransactionService {
                 .ifPresent(WeeklyReport::markCollecting);
     }
 
+    private User findUserForUpdate(User requestedUser) {
+        return userRepository.findWithLockById(requestedUser.getId())
+                .orElseThrow(() -> new GeneralException(
+                        GlobalErrorCode.INTERNAL_SERVER_ERROR
+                ));
+    }
+
+    private void deleteExistingAnalyses(WeeklyReport weeklyReport) {
+        List<WeeklyReportAnalysis> existingAnalyses =
+                weeklyReportAnalysisRepository
+                        .findAllByWeeklyReportOrderBySortOrderAsc(weeklyReport);
+
+        if (existingAnalyses.isEmpty()) {
+            return;
+        }
+
+        weeklyReportAnalysisRepository.deleteAll(existingAnalyses);
+        weeklyReportAnalysisRepository.flush();
+    }
+
+    private List<WeeklyReportAnalysis> createAnalyses(
+            WeeklyReport weeklyReport,
+            List<String> analyses
+    ) {
+        return IntStream.range(0, analyses.size())
+                .mapToObj(index -> WeeklyReportAnalysis.builder()
+                        .weeklyReport(weeklyReport)
+                        .content(analyses.get(index))
+                        .sortOrder(index + 1)
+                        .build())
+                .toList();
+    }
+
     private WeeklyReportGenerationContext createContext(
             User user,
             LocalDate startDate,
@@ -225,8 +309,7 @@ public class WeeklyReportGenerationTransactionService {
         Map<LocalDate, DailyReport> reportByDate =
                 dailyReports.stream()
                         .collect(Collectors.toMap(
-                                report ->
-                                        report.getDailyRecord().getRecordDate(),
+                                report -> report.getDailyRecord().getRecordDate(),
                                 Function.identity()
                         ));
 
@@ -240,8 +323,7 @@ public class WeeklyReportGenerationTransactionService {
         List<WeeklyReportGenerationContext.Day> days =
                 IntStream.rangeClosed(0, 6)
                         .mapToObj(index -> {
-                            LocalDate date =
-                                    startDate.plusDays(index);
+                            LocalDate date = startDate.plusDays(index);
 
                             return toDay(
                                     user,
@@ -347,16 +429,20 @@ public class WeeklyReportGenerationTransactionService {
     }
 
     private void validateStartDate(LocalDate startDate) {
-        if (startDate == null
-                || startDate.getDayOfWeek() != DayOfWeek.MONDAY) {
-            throw new GeneralException(
-                    GlobalErrorCode.BAD_REQUEST
-            );
-        }
+        validateWeekStartDate(startDate);
 
         LocalDate endDate = startDate.plusDays(6);
 
         if (!endDate.isBefore(LocalDate.now(KOREA_ZONE))) {
+            throw new GeneralException(
+                    GlobalErrorCode.BAD_REQUEST
+            );
+        }
+    }
+
+    private void validateWeekStartDate(LocalDate startDate) {
+        if (startDate == null
+                || startDate.getDayOfWeek() != DayOfWeek.MONDAY) {
             throw new GeneralException(
                     GlobalErrorCode.BAD_REQUEST
             );
@@ -391,19 +477,22 @@ public class WeeklyReportGenerationTransactionService {
             Long reportId,
             LocalDateTime generationStartedAt,
             WeeklyReportGenerationContext context,
-            WeeklyReportGenerationResponseDto completedResponse
+            WeeklyReportGenerationResponseDto completedResponse,
+            boolean regeneration
     ) {
 
         public static Preparation pending(
                 Long reportId,
                 LocalDateTime generationStartedAt,
-                WeeklyReportGenerationContext context
+                WeeklyReportGenerationContext context,
+                boolean regeneration
         ) {
             return new Preparation(
                     reportId,
                     generationStartedAt,
                     context,
-                    null
+                    null,
+                    regeneration
             );
         }
 
@@ -414,7 +503,18 @@ public class WeeklyReportGenerationTransactionService {
                     response.weeklyReportId(),
                     null,
                     null,
-                    response
+                    response,
+                    false
+            );
+        }
+
+        public static Preparation skipped() {
+            return new Preparation(
+                    null,
+                    null,
+                    null,
+                    null,
+                    false
             );
         }
 

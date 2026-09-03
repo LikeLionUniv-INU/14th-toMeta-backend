@@ -2,8 +2,8 @@ package com.likelion.tometa.domain.report.service;
 
 import com.likelion.tometa.domain.report.client.OpenAiWeeklyReportClient;
 import com.likelion.tometa.domain.report.dto.response.WeeklyReportGenerationResponseDto;
-import com.likelion.tometa.domain.report.support.WeeklyReportAiResult;
 import com.likelion.tometa.domain.report.support.ReportGenerationResult;
+import com.likelion.tometa.domain.report.support.WeeklyReportAiResult;
 import com.likelion.tometa.domain.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,12 +21,19 @@ public class WeeklyReportGenerationService {
             User user,
             LocalDate startDate
     ) {
-        WeeklyReportGenerationTransactionService.Preparation preparation =
-                transactionService.prepare(
-                        user,
-                        startDate
-                );
+        return generate(transactionService.prepare(user, startDate));
+    }
 
+    public ReportGenerationResult<WeeklyReportGenerationResponseDto> regenerate(
+            User user,
+            LocalDate startDate
+    ) {
+        return generate(transactionService.prepareForRegeneration(user, startDate));
+    }
+
+    private ReportGenerationResult<WeeklyReportGenerationResponseDto> generate(
+            WeeklyReportGenerationTransactionService.Preparation preparation
+    ) {
         if (!preparation.requiresGeneration()) {
             return ReportGenerationResult.alreadyCompleted(
                     preparation.completedResponse()
@@ -34,16 +41,14 @@ public class WeeklyReportGenerationService {
         }
 
         try {
-            WeeklyReportAiResult aiResult =
-                    openAiWeeklyReportClient.generate(
-                            preparation.context()
-                    );
+            WeeklyReportAiResult aiResult = openAiWeeklyReportClient.generate(preparation.context());
 
             return ReportGenerationResult.generated(
                     transactionService.complete(
                             preparation.reportId(),
                             preparation.generationStartedAt(),
-                            aiResult
+                            aiResult,
+                            preparation.regeneration()
                     )
             );
         } catch (RuntimeException e) {
