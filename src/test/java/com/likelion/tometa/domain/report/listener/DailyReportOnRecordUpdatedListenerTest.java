@@ -1,20 +1,26 @@
 package com.likelion.tometa.domain.report.listener;
 
 import com.likelion.tometa.domain.record.event.DailyRecordUpdatedEvent;
+import com.likelion.tometa.domain.report.event.DailyReportRegeneratedEvent;
 import com.likelion.tometa.domain.report.service.DailyReportGenerationService;
 import com.likelion.tometa.domain.report.support.DailyReportPublicationPolicy;
+import com.likelion.tometa.domain.report.support.ReportGenerationResult;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDate;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -34,6 +40,9 @@ class DailyReportOnRecordUpdatedListenerTest {
     @Mock
     private DailyReportGenerationService generationService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private DailyReportOnRecordUpdatedListener listener;
     private DailyRecordUpdatedEvent event;
 
@@ -42,7 +51,8 @@ class DailyReportOnRecordUpdatedListenerTest {
         listener = new DailyReportOnRecordUpdatedListener(
                 publicationPolicy,
                 userRepository,
-                generationService
+                generationService,
+                eventPublisher
         );
 
         event = new DailyRecordUpdatedEvent(
@@ -60,24 +70,53 @@ class DailyReportOnRecordUpdatedListenerTest {
 
         verifyNoInteractions(
                 userRepository,
-                generationService
+                generationService,
+                eventPublisher
         );
     }
 
     @Test
-    void recordUpdatedAfterPublicationTime_regeneratesReportImmediately() {
+    void recordUpdatedAfterPublicationTime_regeneratesReportAndPublishesEvent() {
         User user = User.builder().build();
 
         when(publicationPolicy.isPublicationTimeReached(REPORT_DATE))
                 .thenReturn(true);
         when(userRepository.findById(USER_ID))
                 .thenReturn(Optional.of(user));
+        when(generationService.generate(user, REPORT_DATE))
+                .thenReturn(ReportGenerationResult.generated(null));
 
         listener.regenerateIfPublicationTimeReached(event);
 
         verify(generationService).generate(
                 user,
                 REPORT_DATE
+        );
+
+        ArgumentCaptor<DailyReportRegeneratedEvent> eventCaptor =
+                ArgumentCaptor.forClass(DailyReportRegeneratedEvent.class);
+
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+
+        assertEquals(USER_ID, eventCaptor.getValue().userId());
+        assertEquals(REPORT_DATE, eventCaptor.getValue().reportDate());
+    }
+
+    @Test
+    void reportNotRegenerated_doesNotPublishEvent() {
+        User user = User.builder().build();
+
+        when(publicationPolicy.isPublicationTimeReached(REPORT_DATE))
+                .thenReturn(true);
+        when(userRepository.findById(USER_ID))
+                .thenReturn(Optional.of(user));
+        when(generationService.generate(user, REPORT_DATE))
+                .thenReturn(ReportGenerationResult.alreadyCompleted(null));
+
+        listener.regenerateIfPublicationTimeReached(event);
+
+        verify(eventPublisher, never()).publishEvent(
+                org.mockito.ArgumentMatchers.any()
         );
     }
 
@@ -94,6 +133,10 @@ class DailyReportOnRecordUpdatedListenerTest {
 
         assertDoesNotThrow(
                 () -> listener.regenerateIfPublicationTimeReached(event)
+        );
+
+        verify(eventPublisher, never()).publishEvent(
+                org.mockito.ArgumentMatchers.any()
         );
     }
 }
