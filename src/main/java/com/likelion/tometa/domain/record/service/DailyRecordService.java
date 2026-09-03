@@ -31,6 +31,7 @@ import com.likelion.tometa.domain.record.enums.DailyRecordSelectionType;
 import com.likelion.tometa.domain.record.enums.RecordUsagePeriod;
 import com.likelion.tometa.domain.record.enums.SkinStatus;
 import com.likelion.tometa.domain.record.event.DailyRecordCreatedEvent;
+import com.likelion.tometa.domain.record.event.DailyRecordUpdatedEvent;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticSetRepository;
 import com.likelion.tometa.domain.record.repository.DailyRecordCosmeticSetItemRepository;
@@ -236,6 +237,11 @@ public class DailyRecordService {
                         .dailyRecord(dailyRecord)
                         .build()));
         dailyReport.invalidateForRegeneration();
+
+        eventPublisher.publishEvent(new DailyRecordUpdatedEvent(
+                user.getId(),
+                dailyRecord.getRecordDate()
+        ));
 
         return new DailyRecordUpdateResponseDto(dailyRecord.getId(), date);
     }
