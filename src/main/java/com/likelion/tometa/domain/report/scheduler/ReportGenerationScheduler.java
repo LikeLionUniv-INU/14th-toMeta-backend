@@ -215,10 +215,16 @@ public class ReportGenerationScheduler {
             zone = "Asia/Seoul"
     )
     public void recoverStaleDailyNotificationDeliveries() {
-        LocalDateTime staleBefore = currentDateTime()
-                .truncatedTo(ChronoUnit.MINUTES)
-                .minus(NOTIFICATION_TIMEOUT);
+        LocalDateTime now = currentDateTime().truncatedTo(ChronoUnit.MINUTES);
+        LocalDateTime staleBefore = now.minus(NOTIFICATION_TIMEOUT);
 
+        recoverStaleDailySendingDeliveries(staleBefore);
+        retryStaleDailyNotificationClaims(now, staleBefore);
+    }
+
+    private void recoverStaleDailySendingDeliveries(
+            LocalDateTime staleBefore
+    ) {
         try {
             int recovered = dailyReportRepository
                     .markStaleDailyNotificationDeliveriesUnknown(staleBefore);
@@ -236,6 +242,32 @@ public class ReportGenerationScheduler {
                     staleBefore,
                     e
             );
+        }
+    }
+
+    private void retryStaleDailyNotificationClaims(LocalDateTime now, LocalDateTime staleBefore) {
+        List<Long> reportIds;
+
+        try {
+            reportIds = dailyReportRepository.findStaleDailyNotificationClaimIds(staleBefore);
+        } catch (RuntimeException e) {
+            log.error(
+                    "Failed to find stale daily notification claims. staleBefore={}",
+                    staleBefore,
+                    e
+            );
+            return;
+        }
+
+        for (Long reportId : reportIds) {
+            try {
+                dailyReportNotificationService.send(reportId, now);
+            } catch (RuntimeException e) {
+                log.atWarn()
+                        .setCause(e)
+                        .addArgument(reportId)
+                        .log("Failed to retry stale daily notification claim. reportId={}");
+            }
         }
     }
 

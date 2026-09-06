@@ -317,4 +317,29 @@ class ReportGenerationSchedulerTest {
                 null
         );
     }
+
+    @Test
+    void dailyNotificationRecovery_retriesStaleClaimedNotification() {
+        LocalDateTime staleBefore =
+                MONDAY_00_01.minusMinutes(5);
+
+        when(dailyReportRepository
+                .findStaleDailyNotificationClaimIds(staleBefore))
+                .thenReturn(List.of(10L));
+
+        when(dailyReportNotificationService.send(
+                10L,
+                MONDAY_00_01
+        )).thenReturn(
+                new DailyReportNotificationService.NotificationResult(
+                        true,
+                        1
+                )
+        );
+
+        scheduler.recoverStaleDailyNotificationDeliveries();
+
+        verify(dailyReportNotificationService)
+                .send(10L, MONDAY_00_01);
+    }
 }

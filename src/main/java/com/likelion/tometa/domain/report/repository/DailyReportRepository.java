@@ -213,4 +213,16 @@ public interface DailyReportRepository extends JpaRepository<DailyReport, Long> 
     int markStaleDailyNotificationDeliveriesUnknown(
             @Param("staleBefore") LocalDateTime staleBefore
     );
+
+    @Query("""
+        select report.id
+        from DailyReport report
+        where report.reportStatus = 'completed'
+          and report.notificationStatus = 'claimed'
+          and report.notificationStartedAt <= :staleBefore
+        order by report.id
+        """)
+    List<Long> findStaleDailyNotificationClaimIds(
+            @Param("staleBefore") LocalDateTime staleBefore
+    );
 }
