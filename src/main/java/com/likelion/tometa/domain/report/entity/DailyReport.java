@@ -69,12 +69,28 @@ public class DailyReport extends BaseTimeEntity {
     @Column(name = "generation_version", nullable = false)
     private long generationVersion;
 
+    @Column(name = "notification_status", nullable = false, length = 20)
+    private String notificationStatus;
+
+    @Column(name = "notification_started_at")
+    private LocalDateTime notificationStartedAt;
+
+    @Column(name = "notification_attempt_id", length = 36)
+    private String notificationAttemptId;
+
+    @Column(name = "notification_sent_at")
+    private LocalDateTime notificationSentAt;
+
     @Builder
-    private DailyReport(DailyRecord dailyRecord, DailyHealthSummary dailyHealthSummary) {
+    private DailyReport(
+            DailyRecord dailyRecord,
+            DailyHealthSummary dailyHealthSummary
+    ) {
         this.dailyRecord = dailyRecord;
         this.dailyHealthSummary = dailyHealthSummary;
         this.reportStatus = "collecting";
         this.generationVersion = 0L;
+        this.notificationStatus = "pending";
     }
 
     public void markGenerating() {
@@ -96,7 +112,9 @@ public class DailyReport extends BaseTimeEntity {
         this.aiAnalysis = aiAnalysis;
         this.personalizedSolution = personalizedSolution;
         this.reportStatus = "completed";
+
         LocalDateTime completedAt = LocalDateTime.now();
+
         if (this.generatedAt == null) {
             this.generatedAt = completedAt;
         } else {

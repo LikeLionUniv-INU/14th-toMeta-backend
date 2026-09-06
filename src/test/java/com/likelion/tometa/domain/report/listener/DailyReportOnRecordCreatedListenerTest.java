@@ -1,12 +1,13 @@
 package com.likelion.tometa.domain.report.listener;
 
 import com.likelion.tometa.domain.record.event.DailyRecordCreatedEvent;
+import com.likelion.tometa.domain.report.dto.response.DailyReportGenerationResponseDto;
 import com.likelion.tometa.domain.report.service.DailyReportGenerationService;
+import com.likelion.tometa.domain.report.service.DailyReportNotificationService;
 import com.likelion.tometa.domain.report.support.DailyReportPublicationPolicy;
 import com.likelion.tometa.domain.report.support.ReportGenerationResult;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.repository.UserRepository;
-import com.likelion.tometa.domain.user.service.PushNotificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,16 +27,21 @@ import static org.mockito.Mockito.when;
 class DailyReportOnRecordCreatedListenerTest {
 
     private static final Long USER_ID = 1L;
-    private static final LocalDate REPORT_DATE = LocalDate.of(2026, 8, 24);
+    private static final Long REPORT_ID = 10L;
+    private static final LocalDate REPORT_DATE =
+            LocalDate.of(2026, 8, 24);
 
     @Mock
     private DailyReportPublicationPolicy publicationPolicy;
+
     @Mock
     private UserRepository userRepository;
+
     @Mock
     private DailyReportGenerationService generationService;
+
     @Mock
-    private PushNotificationService pushNotificationService;
+    private DailyReportNotificationService notificationService;
 
     private DailyReportOnRecordCreatedListener listener;
     private DailyRecordCreatedEvent event;
@@ -46,9 +52,13 @@ class DailyReportOnRecordCreatedListenerTest {
                 publicationPolicy,
                 userRepository,
                 generationService,
-                pushNotificationService
+                notificationService
         );
-        event = new DailyRecordCreatedEvent(USER_ID, REPORT_DATE);
+
+        event = new DailyRecordCreatedEvent(
+                USER_ID,
+                REPORT_DATE
+        );
     }
 
     @Test
@@ -58,53 +68,70 @@ class DailyReportOnRecordCreatedListenerTest {
 
         listener.generateIfPublicationTimeReached(event);
 
-        verifyNoInteractions(userRepository, generationService, pushNotificationService);
+        verifyNoInteractions(
+                userRepository,
+                generationService,
+                notificationService
+        );
     }
 
     @Test
-    void recordCreatedAfterPublicationTime_generatesReportImmediately() {
+    void recordCreatedAfterPublicationTime_generatesAndNotifies() {
         User user = User.builder().build();
+
+        DailyReportGenerationResponseDto response =
+                new DailyReportGenerationResponseDto(
+                        REPORT_ID,
+                        REPORT_DATE,
+                        "completed",
+                        null,
+                        null,
+                        null
+                );
+
         when(publicationPolicy.isPublicationTimeReached(REPORT_DATE))
                 .thenReturn(true);
-        when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
-        when(generationService.generate(user, REPORT_DATE))
-                .thenReturn(ReportGenerationResult.generated(null));
+
+        when(userRepository.findById(USER_ID))
+                .thenReturn(Optional.of(user));
+
+        when(generationService.generate(
+                user,
+                REPORT_DATE
+        )).thenReturn(
+                ReportGenerationResult.generated(response)
+        );
 
         listener.generateIfPublicationTimeReached(event);
 
-        verify(generationService).generate(user, REPORT_DATE);
-        verify(pushNotificationService)
-                .sendDailyReportNotification(USER_ID, REPORT_DATE);
+        verify(notificationService).send(REPORT_ID);
     }
 
     @Test
-    void alreadyGeneratedReport_isNotGeneratedOrNotifiedAgain() {
+    void alreadyGeneratedReport_isNotNotifiedAgain() {
         User user = User.builder().build();
-        when(publicationPolicy.isPublicationTimeReached(REPORT_DATE))
-                .thenReturn(true);
+
+        when(publicationPolicy.isPublicationTimeReached(REPORT_DATE)).thenReturn(true);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(generationService.generate(user, REPORT_DATE))
                 .thenReturn(ReportGenerationResult.alreadyCompleted(null));
 
         listener.generateIfPublicationTimeReached(event);
 
-        verify(generationService).generate(user, REPORT_DATE);
-        verify(pushNotificationService, never())
-                .sendDailyReportNotification(USER_ID, REPORT_DATE);
+        verify(notificationService, never()).send(REPORT_ID);
     }
 
     @Test
     void generationFailure_doesNotFailCommittedRecordRequest() {
         User user = User.builder().build();
-        when(publicationPolicy.isPublicationTimeReached(REPORT_DATE))
-                .thenReturn(true);
+
+        when(publicationPolicy.isPublicationTimeReached(REPORT_DATE)).thenReturn(true);
         when(userRepository.findById(USER_ID)).thenReturn(Optional.of(user));
         when(generationService.generate(user, REPORT_DATE))
                 .thenThrow(new RuntimeException("generation failed"));
 
         assertDoesNotThrow(() -> listener.generateIfPublicationTimeReached(event));
 
-        verify(pushNotificationService, never())
-                .sendDailyReportNotification(USER_ID, REPORT_DATE);
+        verifyNoInteractions(notificationService);
     }
 }
