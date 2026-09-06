@@ -1,14 +1,16 @@
 package com.likelion.tometa.domain.report.scheduler;
 
 import com.likelion.tometa.domain.record.repository.DailyRecordRepository;
+import com.likelion.tometa.domain.report.dto.response.DailyReportGenerationResponseDto;
+import com.likelion.tometa.domain.report.repository.DailyReportRepository;
 import com.likelion.tometa.domain.report.repository.WeeklyReportRepository;
 import com.likelion.tometa.domain.report.service.DailyReportGenerationService;
+import com.likelion.tometa.domain.report.service.DailyReportNotificationService;
 import com.likelion.tometa.domain.report.service.WeeklyReportGenerationService;
 import com.likelion.tometa.domain.report.service.WeeklyReportNotificationService;
 import com.likelion.tometa.domain.report.support.ReportGenerationResult;
 import com.likelion.tometa.domain.user.entity.User;
 import com.likelion.tometa.domain.user.repository.UserRepository;
-import com.likelion.tometa.domain.user.service.PushNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -29,15 +31,17 @@ import java.util.List;
 public class ReportGenerationScheduler {
 
     private static final ZoneId KOREA_ZONE = ZoneId.of("Asia/Seoul");
-    private static final Duration NOTIFICATION_TIMEOUT = Duration.ofMinutes(5);
+    private static final Duration NOTIFICATION_TIMEOUT =
+            Duration.ofMinutes(5);
 
     private final DailyRecordRepository dailyRecordRepository;
+    private final DailyReportRepository dailyReportRepository;
     private final WeeklyReportRepository weeklyReportRepository;
     private final UserRepository userRepository;
     private final DailyReportGenerationService dailyReportGenerationService;
+    private final DailyReportNotificationService dailyReportNotificationService;
     private final WeeklyReportGenerationService weeklyReportGenerationService;
     private final WeeklyReportNotificationService weeklyReportNotificationService;
-    private final PushNotificationService pushNotificationService;
     private final Clock clock;
 
     @Scheduled(
@@ -45,7 +49,9 @@ public class ReportGenerationScheduler {
             zone = "Asia/Seoul"
     )
     public void generateDailyReports() {
-        LocalDate reportDate = currentDateTime().toLocalDate().minusDays(1);
+        LocalDateTime now = currentDateTime();
+        LocalDate reportDate = now.toLocalDate().minusDays(1);
+
         List<Long> targetUserIds = dailyRecordRepository
                 .findDailyReportGenerationTargetUserIds(reportDate);
 
@@ -56,19 +62,29 @@ public class ReportGenerationScheduler {
 
         for (Long userId : targetUserIds) {
             try {
-                User user = userRepository.findById(userId).orElseThrow();
-                ReportGenerationResult<?> result = dailyReportGenerationService
-                        .generate(user, reportDate);
+                User user = userRepository
+                        .findById(userId)
+                        .orElseThrow();
+
+                ReportGenerationResult<DailyReportGenerationResponseDto> result =
+                        dailyReportGenerationService.generate(
+                                user,
+                                reportDate
+                        );
+
                 if (result.generated()) {
                     generated++;
+
                     try {
-                        notified += pushNotificationService
-                                .sendDailyReportNotification(
-                                        userId,
-                                        reportDate
-                                );
+                        DailyReportNotificationService.NotificationResult notificationResult
+                                = dailyReportNotificationService.send(result.response().dailyReportId(), now);
+
+                        if (notificationResult.processed()) {
+                            notified += notificationResult.successCount();
+                        }
                     } catch (RuntimeException e) {
                         notificationFailed++;
+
                         log.atWarn()
                                 .setCause(e)
                                 .addArgument(userId)
@@ -78,6 +94,7 @@ public class ReportGenerationScheduler {
                 }
             } catch (RuntimeException e) {
                 generationFailed++;
+
                 log.atWarn()
                         .setCause(e)
                         .addArgument(userId)
@@ -105,6 +122,7 @@ public class ReportGenerationScheduler {
         LocalDate currentMonday = currentDateTime().toLocalDate();
         LocalDate weekStartDate = currentMonday.minusWeeks(1);
         LocalDate weekEndDate = currentMonday.minusDays(1);
+
         List<Long> targetUserIds = weeklyReportRepository
                 .findWeeklyReportGenerationTargetUserIds(
                         weekStartDate,
@@ -124,6 +142,7 @@ public class ReportGenerationScheduler {
                 }
             } catch (RuntimeException e) {
                 failed++;
+
                 log.atWarn()
                         .setCause(e)
                         .addArgument(userId)
@@ -151,6 +170,7 @@ public class ReportGenerationScheduler {
                 .truncatedTo(ChronoUnit.MINUTES);
         LocalDate weekStartDate = now.toLocalDate().minusWeeks(1);
         LocalTime currentTime = now.toLocalTime();
+
         List<Long> reportIds = weeklyReportRepository
                 .findWeeklyNotificationTargetIds(
                         weekStartDate,
@@ -172,6 +192,7 @@ public class ReportGenerationScheduler {
                 }
             } catch (RuntimeException e) {
                 failed++;
+
                 log.atWarn()
                         .setCause(e)
                         .addArgument(reportId)
@@ -190,6 +211,35 @@ public class ReportGenerationScheduler {
     }
 
     @Scheduled(
+            cron = "${app.report.scheduler.daily-notification-recovery-cron:0 * * * * *}",
+            zone = "Asia/Seoul"
+    )
+    public void recoverStaleDailyNotificationDeliveries() {
+        LocalDateTime staleBefore = currentDateTime()
+                .truncatedTo(ChronoUnit.MINUTES)
+                .minus(NOTIFICATION_TIMEOUT);
+
+        try {
+            int recovered = dailyReportRepository
+                    .markStaleDailyNotificationDeliveriesUnknown(staleBefore);
+
+            if (recovered > 0) {
+                log.warn(
+                        "Stale daily notification deliveries marked unknown. staleBefore={}, recovered={}",
+                        staleBefore,
+                        recovered
+                );
+            }
+        } catch (RuntimeException e) {
+            log.error(
+                    "Failed to mark stale daily notification deliveries as unknown. staleBefore={}",
+                    staleBefore,
+                    e
+            );
+        }
+    }
+
+    @Scheduled(
             cron = "${app.report.scheduler.weekly-notification-recovery-cron:0 * * * * *}",
             zone = "Asia/Seoul"
     )
@@ -197,9 +247,11 @@ public class ReportGenerationScheduler {
         LocalDateTime staleBefore = currentDateTime()
                 .truncatedTo(ChronoUnit.MINUTES)
                 .minus(NOTIFICATION_TIMEOUT);
+
         try {
             int recovered = weeklyReportRepository
                     .markStaleWeeklyNotificationDeliveriesUnknown(staleBefore);
+
             if (recovered > 0) {
                 log.warn(
                         "Stale weekly notification deliveries marked unknown. staleBefore={}, recovered={}",

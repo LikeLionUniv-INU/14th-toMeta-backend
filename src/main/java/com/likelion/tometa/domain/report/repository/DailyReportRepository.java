@@ -45,6 +45,17 @@ public interface DailyReportRepository extends JpaRepository<DailyReport, Long> 
             @Param("dailyRecord") DailyRecord dailyRecord
     );
 
+    @Query("""
+            select report
+            from DailyReport report
+            join fetch report.dailyRecord dailyRecord
+            join fetch dailyRecord.user
+            where report.id = :reportId
+            """)
+    Optional<DailyReport> findByIdWithUser(
+            @Param("reportId") Long reportId
+    );
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Transactional
     @Query("""
@@ -102,5 +113,104 @@ public interface DailyReportRepository extends JpaRepository<DailyReport, Long> 
     int resetGenerationIfCurrent(
             @Param("reportId") Long reportId,
             @Param("generationVersion") long generationVersion
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            update DailyReport report
+               set report.notificationStatus = 'claimed',
+                   report.notificationStartedAt = :startedAt,
+                   report.notificationAttemptId = :attemptId
+             where report.id = :reportId
+               and report.reportStatus = 'completed'
+               and (
+                    report.notificationStatus = 'pending'
+                    or (
+                        report.notificationStatus = 'claimed'
+                        and report.notificationStartedAt <= :staleBefore
+                    )
+               )
+            """)
+    int claimDailyNotification(
+            @Param("reportId") Long reportId,
+            @Param("attemptId") String attemptId,
+            @Param("startedAt") LocalDateTime startedAt,
+            @Param("staleBefore") LocalDateTime staleBefore
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            update DailyReport report
+               set report.notificationStatus = 'sending',
+                   report.notificationStartedAt = :deliveryStartedAt
+             where report.id = :reportId
+               and report.notificationStatus = 'claimed'
+               and report.notificationAttemptId = :attemptId
+            """)
+    int beginDailyNotificationDelivery(
+            @Param("reportId") Long reportId,
+            @Param("attemptId") String attemptId,
+            @Param("deliveryStartedAt") LocalDateTime deliveryStartedAt
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            update DailyReport report
+               set report.notificationStatus = 'sent',
+                   report.notificationStartedAt = null,
+                   report.notificationSentAt = :sentAt
+             where report.id = :reportId
+               and report.notificationStatus = 'sending'
+               and report.notificationAttemptId = :attemptId
+            """)
+    int markDailyNotificationSent(
+            @Param("reportId") Long reportId,
+            @Param("attemptId") String attemptId,
+            @Param("sentAt") LocalDateTime sentAt
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            update DailyReport report
+               set report.notificationStatus = 'unknown'
+             where report.id = :reportId
+               and report.notificationStatus = 'sending'
+               and report.notificationAttemptId = :attemptId
+            """)
+    int markDailyNotificationUnknown(
+            @Param("reportId") Long reportId,
+            @Param("attemptId") String attemptId
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            update DailyReport report
+               set report.notificationStatus = 'pending',
+                   report.notificationStartedAt = null,
+                   report.notificationAttemptId = null
+             where report.id = :reportId
+               and report.notificationStatus = 'claimed'
+               and report.notificationAttemptId = :attemptId
+            """)
+    int resetDailyNotificationClaim(
+            @Param("reportId") Long reportId,
+            @Param("attemptId") String attemptId
+    );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("""
+            update DailyReport report
+               set report.notificationStatus = 'unknown'
+             where report.notificationStatus = 'sending'
+               and report.notificationStartedAt <= :staleBefore
+            """)
+    int markStaleDailyNotificationDeliveriesUnknown(
+            @Param("staleBefore") LocalDateTime staleBefore
     );
 }
